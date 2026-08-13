@@ -66,9 +66,19 @@ function currentCelebrity(){const r=currentRound();return r?.type==='guessAge'?r
 function questionKey(){return `${state.live.activeRoundId || 'none'}:${state.live.questionIndex}`}
 function answerCount(){return Object.keys(state.live.submissions||{}).length}
 function timeLeft(){if(!state.live.deadline)return 0;return Math.max(0,Math.ceil((state.live.deadline-Date.now())/1000))}
+function remoteSession(){return window.gameNightRemoteSession||null}
+function remoteTeams(){return remoteSession()?.teams||[]}
 
 function bindEventFields(){
-  $('#eventName').value=state.event.name;$('#venueName').value=state.event.venue;$('#eventDate').value=state.event.date;$('#expectedTeams').value=state.event.expectedTeams;$('#eventTitle').textContent=state.event.name;$('#roomCode').textContent=state.event.roomCode;$('#connectedCount').textContent=`${state.teams.length} teams connected`;
+  const remote=remoteSession()?.event;
+  if(remote){
+    state.event={...state.event,name:remote.name,venue:remote.venue,date:remote.event_date,expectedTeams:remote.expected_teams,roomCode:remote.room_code};
+    $('#eventName').value=remote.name;$('#venueName').value=remote.venue;$('#eventDate').value=remote.event_date;$('#expectedTeams').value=remote.expected_teams;$('#eventTitle').textContent=remote.name;$('#roomCode').textContent=remote.room_code;
+    ['eventName','venueName','eventDate','expectedTeams'].forEach(id=>{$('#'+id).disabled=true;$('#'+id).title='Database-backed event details are read-only in Phase 2A'});
+    $('#connectedCount').textContent=`${remoteTeams().length} teams joined`;
+    return;
+  }
+  $('#eventName').value=state.event.name;$('#venueName').value=state.event.venue;$('#eventDate').value=state.event.date;$('#expectedTeams').value=state.event.expectedTeams;$('#eventTitle').textContent=state.event.name;$('#roomCode').textContent=state.event.roomCode;$('#connectedCount').textContent=`${state.teams.length} local test teams`;
   [['eventName','name'],['venueName','venue'],['eventDate','date'],['expectedTeams','expectedTeams']].forEach(([id,key])=>$('#'+id).oninput=e=>{state.event[key]=key==='expectedTeams'?Number(e.target.value):e.target.value;$('#eventTitle').textContent=state.event.name||'Untitled Game Night';save(false)});
 }
 function roundSummary(r){
@@ -163,8 +173,10 @@ function renderIBetEditor(r){
   $('#roundTitleInput').oninput=e=>r.title=e.target.value;['groups','groupSize','categories','seconds','winPoints'].forEach(id=>$('#'+id).oninput=e=>s[id]=Number(e.target.value));
 }
 function renderTeams(){
-  $('#connectedCount').textContent=`${state.teams.length} teams connected`;
-  $('#teamsTable').innerHTML=`<table><thead><tr><th>Team</th><th>Total points</th><th></th></tr></thead><tbody>${state.teams.map(t=>`<tr><td><input class="score-input team-name" style="width:220px" data-id="${t.id}" value="${esc(t.name)}"></td><td><input class="score-input team-score" data-id="${t.id}" type="number" value="${t.total||0}"></td><td><button class="mini-btn remove-team" data-id="${t.id}">Remove</button></td></tr>`).join('')}</tbody></table>`;
+  const joined=remoteTeams();
+  $('#connectedCount').textContent=remoteSession()?`${joined.length} teams joined`:`${state.teams.length} local test teams`;
+  const authoritative=remoteSession()?`<div class="remote-teams"><h3>Supabase-joined Teams</h3><p>Authoritative room membership. These identities are not used by local prototype gameplay yet.</p><table><thead><tr><th>Team</th><th>Status</th><th>Joined</th></tr></thead><tbody>${joined.map(t=>`<tr><td><strong>${esc(t.name)}</strong></td><td><span class="remote-team-state">${esc(t.status)}</span></td><td>${new Date(t.joined_at).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</td></tr>`).join('')||'<tr><td colspan="3">Waiting for Teams to join…</td></tr>'}</tbody></table></div>`:'';
+  $('#teamsTable').innerHTML=`${authoritative}<div class="prototype-teams"><h3>Local gameplay test Teams</h3><p>Browser-only prototype data. Kept separate until Guess the Age moves to Supabase.</p><table><thead><tr><th>Team</th><th>Local points</th><th></th></tr></thead><tbody>${state.teams.map(t=>`<tr><td><input class="score-input team-name" style="width:220px" data-id="${t.id}" value="${esc(t.name)}"></td><td><input class="score-input team-score" data-id="${t.id}" type="number" value="${t.total||0}"></td><td><button class="mini-btn remove-team" data-id="${t.id}">Remove</button></td></tr>`).join('')}</tbody></table></div>`;
   document.querySelectorAll('.team-name').forEach(x=>x.oninput=e=>{state.teams.find(t=>t.id==e.target.dataset.id).name=e.target.value;save(false)});document.querySelectorAll('.team-score').forEach(x=>x.oninput=e=>{state.teams.find(t=>t.id==e.target.dataset.id).total=Number(e.target.value);renderLeaderboard();save(false)});document.querySelectorAll('.remove-team').forEach(x=>x.onclick=e=>{state.teams=state.teams.filter(t=>t.id!=e.target.dataset.id);renderTeams();renderLeaderboard();renderLiveControl();save(false)})
 }
 function renderLeaderboard(){const sorted=[...state.teams].sort((a,b)=>(b.total||0)-(a.total||0));$('#leaderboardTable').innerHTML=`<table><thead><tr><th>Place</th><th>Team</th><th>Points</th></tr></thead><tbody>${sorted.map((t,i)=>`<tr><td>${i+1}</td><td><strong>${esc(t.name)}</strong></td><td>${t.total||0}</td></tr>`).join('')}</tbody></table>`}
@@ -208,7 +220,7 @@ function renderLiveControl(){
       </div>
     </div>`;
   $('#openAudience').onclick=()=>window.open('audience.html','gameNightAudience');
-  $('#openTeamTest').onclick=()=>window.open('team.html','_blank');
+  $('#openTeamTest').onclick=()=>{const code=remoteSession()?.event?.room_code;window.open(code?`team.html?room=${encodeURIComponent(code)}`:'team.html','_blank')};
   $('#audienceIdle').onclick=()=>{state.live.status='idle';state.live.deadline=null;save(false);renderLiveControl()};
   $('#liveRoundSelect').onchange=e=>{state.live.activeRoundId=e.target.value;state.live.questionIndex=0;resetQuestion('ready');save(false);renderLiveControl()};
   $('#liveQuestionSelect').onchange=e=>{state.live.questionIndex=Number(e.target.value);resetQuestion('ready');save(false);renderLiveControl()};
@@ -238,6 +250,9 @@ function init(){
   $('#saveEvent').onclick=()=>{save(true);renderRounds();renderLiveControl()};
   $('#resetDemo').onclick=()=>{if(confirm('Reset the prototype back to the demo event?')){localStorage.removeItem(STORE_KEY);localStorage.removeItem(LEGACY_KEY);location.reload()}};
   $('#addRound').onclick=openModal;$('#closeModal').onclick=closeModal;$('#modalBackdrop').onclick=closeModal;$('#closeDrawer').onclick=closeDrawer;$('#drawerBackdrop').onclick=closeDrawer;$('#doneRound').onclick=closeDrawer;$('#deleteRound').onclick=deleteRound;$('#addTeam').onclick=addTeam;
+  $('#logoutHost').onclick=()=>window.dispatchEvent(new Event('game-night-host-logout'));
+  $('#copyTeamLink').onclick=async()=>{const code=remoteSession()?.event?.room_code;if(!code)return;const url=new URL('team.html',location.href);url.searchParams.set('room',code);try{await navigator.clipboard.writeText(url.href);toast('Team join link copied')}catch{toast(`Room code: ${code}`)}};
   window.addEventListener('storage',e=>{if(e.key===STORE_KEY&&e.newValue){state=migrate(JSON.parse(e.newValue));renderLeaderboard();renderLiveControl()}});
+  window.addEventListener('game-night-remote-state',e=>{window.gameNightRemoteSession=e.detail;bindEventFields();renderTeams();renderLiveControl()});
 }
 init();

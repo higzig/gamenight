@@ -1,5 +1,13 @@
 # Game Night Admin V5
 
+## Phase 2A setup
+
+The Admin and room-query Team flow now use Supabase Auth and the database-backed event identity layer. Copy `.env.example` to `.env.local`, provide `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY`, then run `npm run dev`.
+
+Admin requires a permanent email/password Host account. A Team joins at `team.html?room=ABC123` with anonymous Supabase Auth. Opening `team.html` without a room query intentionally retains the same-browser local gameplay prototype until Guess the Age moves to Supabase.
+
+Build the Cloudflare-compatible static output with `npm run build`; publish the `dist` directory.
+
 ## Run locally
 1. Open this folder in VS Code.
 2. Right-click `index.html` and choose **Open with Live Server**.

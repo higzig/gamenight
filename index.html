@@ -10,7 +10,8 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <div class="app-shell">
+  <main id="adminGateway" class="auth-gateway" aria-live="polite"></main>
+  <div class="app-shell" id="adminApp" hidden>
     <aside class="sidebar">
       <div class="brand">
         <div class="brand-mark">GN</div>
@@ -24,7 +25,7 @@
       </nav>
       <div class="sidebar-bottom">
         <span class="status-dot"></span>
-        <div><strong>Local prototype</strong><small>Live display prototype</small></div>
+        <div><strong>Supabase room</strong><small>Local gameplay prototype</small></div>
       </div>
     </aside>
 
@@ -36,7 +37,8 @@
         </div>
         <div class="top-actions">
           <button class="btn ghost" id="resetDemo">Reset demo</button>
-          <button class="btn primary" id="saveEvent">Save changes</button>
+          <button class="btn primary" id="saveEvent">Save local game setup</button>
+          <button class="btn ghost" id="logoutHost">Log out</button>
         </div>
       </header>
 
@@ -58,13 +60,13 @@
           <div class="panel join-card">
             <div class="panel-heading">
               <div><p class="label">JOIN GAME</p><h2>Room <span id="roomCode">4821</span></h2></div>
-              <span class="pill mock">Mocked</span>
+              <span class="pill ready">Live room</span>
             </div>
             <div class="join-box">
               <div class="fake-qr" aria-label="QR placeholder"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
-              <div><strong id="connectedCount">4 teams connected</strong><p>QR joining will plug into this event later. For now, teams are managed manually.</p></div>
+              <div><strong id="connectedCount">0 teams joined</strong><p>Teams join securely on their own devices using this room code.</p></div>
             </div>
-            <button class="btn full" disabled>Show join screen</button>
+            <button class="btn full" id="copyTeamLink">Copy Team join link</button>
           </div>
         </div>
 
@@ -82,7 +84,7 @@
 
       <section id="view-teams" class="view">
         <div class="section-heading compact">
-          <div><p class="eyebrow">PLAYERS</p><h2>Teams</h2><p>Manual for the prototype; later these will appear automatically when teams scan the QR code.</p></div>
+          <div><p class="eyebrow">PLAYERS</p><h2>Teams</h2><p>Supabase-joined Teams are authoritative. Local test Teams remain isolated below for prototype gameplay only.</p></div>
           <button class="btn secondary" id="addTeam">+ Add team</button>
         </div>
         <div class="panel"><div id="teamsTable"></div></div>
@@ -117,6 +119,6 @@
     <div class="game-picker" id="gamePicker"></div>
   </div>
 
-  <script src="admin.js"></script>
+  <script type="module" src="/src/admin-entry.js"></script>
 </body>
 </html>
