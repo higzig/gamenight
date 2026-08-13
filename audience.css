@@ -17,3 +17,4 @@
   object-position:center center!important;
   flex:0 0 auto;
 }
+.join-screen h1{margin-bottom:4px}.join-screen h2{font:700 clamp(28px,3vw,48px) 'Space Grotesk';margin:0 0 20px}.join-qr{width:min(34vh,420px);height:min(34vh,420px);background:#fff;padding:10px;border-radius:18px;z-index:1}.join-screen .join{margin:14px 0 8px;z-index:1}.join-url{font-size:clamp(10px,1vw,14px);color:var(--muted);margin-top:8px;z-index:1}.suspense h1 span{color:var(--accent2)}

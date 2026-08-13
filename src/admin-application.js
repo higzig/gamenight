@@ -104,6 +104,13 @@ export function createAdminApplication({
       revealQuestion: () => services.revealRemoteQuestion(client, eventId).then(refreshActiveEvent),
       advanceQuestion: () => services.advanceRemoteQuestion(client, eventId).then(refreshActiveEvent),
       setDisplay: status => services.setRemoteDisplay(client, eventId, status).then(refreshActiveEvent),
+      restartRound: () => services.restartGuessAgeRound(client, eventId).then(refreshActiveEvent),
+      reorderQuestion: (questionId, direction) => services.reorderGuessAgeQuestion(client, eventId, questionId, direction).then(refreshActiveEvent),
+      startNewSession: async () => {
+        const newId = await services.copyEventSession(client, eventId)
+        await openEvent(newId)
+        return newId
+      },
       refresh: refreshActiveEvent,
     }
     if (!legacyLoaded) { legacyLoaded = true; await loadLegacyAdmin() }

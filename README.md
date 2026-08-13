@@ -8,6 +8,12 @@ Admin requires a permanent email/password Host account. A Team joins at `team.ht
 
 Build the Cloudflare-compatible static output with `npm run build`; publish the `dist` directory.
 
+## Phase 2C hosted flow
+
+Audience lobby QR codes are generated in the browser and point to the current site's `/team.html?room=ABC123` URL. Gameplay state remains in Postgres: `start_question` records a 15-second server deadline and a reveal deadline five seconds later. A one-second Supabase Cron job calls a private, idempotent transition function to enter suspense and then score/reveal atomically. No browser timer has authority to accept submissions, change state, or score.
+
+`display_mode` is independent of gameplay `status`, so the Host can show the join screen or leaderboard and then return to the current game without corrupting a running question. Restart Round and Start New Session are separate Host-owner RPCs: restart retains Teams and manual corrections; new session preserves the old event and copies only event metadata and the Guess the Age configuration into a new room.
+
 ## Run locally
 1. Open this folder in VS Code.
 2. Right-click `index.html` and choose **Open with Live Server**.

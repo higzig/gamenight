@@ -68,3 +68,16 @@ export function advanceRemoteQuestion(client, eventId) {
 export function setRemoteDisplay(client, eventId, status) {
   return rpc(client, 'set_event_display', { p_event_id: eventId, p_status: status })
 }
+
+export function restartGuessAgeRound(client, eventId) {
+  return rpc(client, 'restart_guess_age_round', { p_event_id: eventId })
+}
+
+export async function copyEventSession(client, eventId) {
+  const event = await rpc(client, 'copy_event_session', { p_event_id: eventId })
+  return event.id
+}
+
+export function reorderGuessAgeQuestion(client, eventId, questionId, direction) {
+  return rpc(client, 'reorder_guess_age_question', { p_event_id: eventId, p_question_id: questionId, p_direction: direction })
+}
