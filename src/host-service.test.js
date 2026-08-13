@@ -18,8 +18,9 @@ describe('Host service', () => {
   it('saves lineup references and reusable media instead of base64 data', async () => {
     const rpc=vi.fn().mockResolvedValue({data:'round-id',error:null})
     await saveGuessAgeRound({rpc},'event-id','Guess the Age',[{id:'celebrity-id',name:'Pedro Pascal',dob:'1975-04-02',imageKind:'storage',imagePath:'celebrities/celebrity-id/photo.jpg',imageSourceKind:'upload'}])
-    expect(rpc.mock.calls[0][1].p_questions[0]).toMatchObject({celebrity_id:'celebrity-id',image_path:'celebrities/celebrity-id/photo.jpg',external_image_url:null})
+    expect(rpc.mock.calls[0][1].p_questions[0]).toMatchObject({celebrity_id:'celebrity-id',date_of_birth:'1975-04-02',image_path:'celebrities/celebrity-id/photo.jpg',external_image_url:null})
   })
+  it('sends the exact selected YYYY-MM-DD with a Wikipedia image',async()=>{const rpc=vi.fn().mockResolvedValue({data:'round-id',error:null});await saveGuessAgeRound({rpc},'event-id','Guess the Age',[{name:'Zendaya',dob:'1996-09-01',imageKind:'external',image:'https://upload.wikimedia.org/zendaya.jpg',imageSourceKind:'wikipedia'}]);expect(rpc.mock.calls[0][1].p_questions[0]).toMatchObject({date_of_birth:'1996-09-01',external_image_url:'https://upload.wikimedia.org/zendaya.jpg',image_source:'wikipedia'})})
   it('uploads compressed media under the celebrity-owned path', async () => {
     const upload=vi.fn().mockResolvedValue({error:null}),from=vi.fn(()=>({upload}))
     const path=await uploadCelebrityImage({storage:{from}},'celebrity-id',new Blob(['image'],{type:'image/jpeg'}))

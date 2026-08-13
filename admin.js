@@ -1,5 +1,5 @@
 import { moveItem, runConfirmed } from './src/admin-controls.js';
-import { applyCelebrityRecord, selectCelebrityMatch, shouldTryWikipedia } from './src/celebrity-library.js';
+import { applyCelebrityRecord, createNewCelebrityDraft, dobInputValue, lineupValidationError, selectCelebrityMatch, shouldTryWikipedia, updateCelebrityDob } from './src/celebrity-library.js';
 const STORE_KEY = 'gameNightAdminV3';
 const LEGACY_KEY = 'gameNightAdminV2';
 const CHANNEL_NAME = 'gameNightLiveV3';
@@ -111,7 +111,7 @@ function renderDrawer(r){
 function renderGuessAgeEditor(r){
   const celebs=r.settings.celebrities||[];
   $('#drawerBody').innerHTML=`<div class="settings-grid"><label class="field">Round title<input id="roundTitleInput" value="${esc(r.title)}"></label><label class="field">Answer timer<select id="timerInput"><option value="10">10 seconds</option><option value="12">12 seconds</option><option value="15">15 seconds</option><option value="20">20 seconds</option></select></label></div><p class="hint">Prepare the lineup before the event. DOB is the source of truth; age is calculated on the event date. For photos, portrait 4:5 works best (around 800 × 1000 px). Uploaded photos are automatically resized and compressed. Wikipedia lookup is a convenience for the prototype; verify the person and image rights before a public/commercial event.</p><div class="subheading"><h3>Celebrity lineup <span style="color:var(--muted)">(${celebs.length})</span></h3><button class="mini-btn" id="addCeleb">+ Add</button></div><div class="celebs" id="celebList"></div>`;
-  $('#roundTitleInput').oninput=e=>r.title=e.target.value;$('#timerInput').value=String(r.settings.timer||15);$('#timerInput').onchange=e=>r.settings.timer=Number(e.target.value);$('#addCeleb').onclick=()=>{celebs.push({name:'New celebrity',dob:'1990-01-01',image:'',imageSource:'',imageSourceUrl:''});renderGuessAgeEditor(r)};renderCelebs(r);
+  $('#roundTitleInput').oninput=e=>r.title=e.target.value;$('#timerInput').value=String(r.settings.timer||15);$('#timerInput').onchange=e=>r.settings.timer=Number(e.target.value);$('#addCeleb').onclick=()=>{celebs.push(createNewCelebrityDraft());renderGuessAgeEditor(r)};renderCelebs(r);
 }
 function renderCelebs(r){
   const el=$('#celebList');if(!el)return;
@@ -132,16 +132,16 @@ function renderCelebs(r){
       <input data-field="image" data-i="${i}" value="${esc(c.image?.startsWith('data:')?'':(c.image||''))}" placeholder="Or paste image URL">
       <small class="library-state">${c.libraryStatus==='existing'?'Existing celebrity ✓'+(c.image?' · Image reused ✓':' · Image missing'):'New celebrity'}</small>
     </div>
-    <input data-field="dob" data-i="${i}" type="date" value="${esc(c.dob)}">
+    <input data-field="dob" data-i="${i}" type="date" value="${esc(dobInputValue(c))}">
     <span class="age-badge">Age ${ageOn(c.dob,state.event.date)}</span>
     <div class="celeb-reorder"><button class="mini-btn move-celeb-up" data-i="${i}" ${i===0?'disabled':''}>Up</button><button class="mini-btn move-celeb-down" data-i="${i}" ${i===r.settings.celebrities.length-1?'disabled':''}>Down</button></div>
     <button class="icon-btn remove-celeb" data-i="${i}">×</button>
   </div>`).join('');
   el.querySelectorAll('input[data-field]').forEach(inp=>inp.oninput=e=>{
     const c=r.settings.celebrities[Number(e.target.dataset.i)];
-    c[e.target.dataset.field]=e.target.value;
+    if(e.target.dataset.field==='dob')updateCelebrityDob(c,e.target.value);else c[e.target.dataset.field]=e.target.value;
     if(e.target.dataset.field==='image'&&e.target.value){c.imageKind='external';c.imagePath=null;c.imageSourceKind='manual_url';c.sourceReference=null;c.imageSource='Manual URL';c.imageSourceUrl=e.target.value;}
-    if(e.target.dataset.field==='dob')renderCelebs(r);
+    if(e.target.dataset.field==='dob'){const badge=e.target.parentElement?.querySelector('.age-badge')||e.target.closest('.celeb-row')?.querySelector('.age-badge');if(badge)badge.textContent=`Age ${ageOn(c.dob,state.event.date)}`;}
   });
   el.querySelectorAll('input[data-field="name"]').forEach(inp=>inp.onblur=()=>resolveCelebrity(r,Number(inp.dataset.i)));
   el.querySelectorAll('input[data-field="dob"]').forEach(inp=>inp.onchange=()=>resolveCelebrity(r,Number(inp.dataset.i)));
@@ -158,9 +158,9 @@ function renderCelebs(r){
   el.querySelectorAll('.wiki-photo').forEach(b=>b.onclick=()=>findWikipediaPhoto(r,Number(b.dataset.i),b));
   el.querySelectorAll('.clear-photo').forEach(b=>b.onclick=async()=>{const c=r.settings.celebrities[Number(b.dataset.i)];c.image='';c.imageKind='none';c.imagePath=null;c.imageSourceKind=null;c.sourceReference=null;c.imageSource='';c.imageSourceUrl='';if(remoteSession()&&c.id){try{await persistCelebrity(c)}catch(e){console.error(e);toast('Could not clear reusable image')}}save(false);renderCelebs(r)});
 }
-async function persistCelebrity(c){if(!remoteSession())return c;const saved=await window.gameNightSupabaseActions.saveCelebrity(c);applyCelebrityRecord(c,saved,storageBase());return c}
+async function persistCelebrity(c){if(!remoteSession())return c;const submittedDob=c.dob;const saved=await window.gameNightSupabaseActions.saveCelebrity({...c,dob:submittedDob});applyCelebrityRecord(c,saved,storageBase(),{preserveDob:c.dob!==submittedDob});return c}
 async function ensureCelebrity(c){if(c.id)return c;if(!c.name||!c.dob)throw new Error('Enter name and DOB first');c.imageKind=c.image?.startsWith('https://')?'external':'none';c.imageSourceKind=c.imageKind==='external'?'manual_url':null;return persistCelebrity(c)}
-async function resolveCelebrity(r,i){if(!remoteSession())return;const c=r.settings.celebrities[i];if((c.name||'').trim().length<3)return;try{const matches=await window.gameNightSupabaseActions.searchCelebrities(c.name);const match=selectCelebrityMatch(matches,c.name,c.dob);if(match){applyCelebrityRecord(c,match,storageBase());renderCelebs(r);if(shouldTryWikipedia(match,c._wikiAttempted))await findWikipediaPhoto(r,i,null,true);return}if(c.dob){await ensureCelebrity(c);renderCelebs(r);if(shouldTryWikipedia({image_kind:c.imageKind,image_path:c.imagePath,external_image_url:c.image,wikipedia_checked_at:c.wikipediaCheckedAt},c._wikiAttempted))await findWikipediaPhoto(r,i,null,true)}}catch(e){console.error(e);toast('Celebrity library lookup failed') }}
+async function resolveCelebrity(r,i){if(!remoteSession())return;const c=r.settings.celebrities[i],lookupName=c.name,lookupDob=c.dob;if((lookupName||'').trim().length<3)return;try{const matches=await window.gameNightSupabaseActions.searchCelebrities(lookupName);if(c.name!==lookupName||c.dob!==lookupDob)return;const match=selectCelebrityMatch(matches,lookupName,lookupDob);if(match){applyCelebrityRecord(c,match,storageBase(),{preserveDob:Boolean(lookupDob)});renderCelebs(r);if(shouldTryWikipedia(match,c._wikiAttempted))await findWikipediaPhoto(r,i,null,true);return}if(c.dob){await ensureCelebrity(c);renderCelebs(r);if(shouldTryWikipedia({image_kind:c.imageKind,image_path:c.imagePath,external_image_url:c.image,wikipedia_checked_at:c.wikipediaCheckedAt},c._wikiAttempted))await findWikipediaPhoto(r,i,null,true)}}catch(e){console.error(e);toast('Celebrity library lookup failed') }}
 async function resizeImageFile(file){
   const dataUrl=await new Promise((resolve,reject)=>{const fr=new FileReader();fr.onload=()=>resolve(fr.result);fr.onerror=reject;fr.readAsDataURL(file)});
   const img=await new Promise((resolve,reject)=>{const im=new Image();im.onload=()=>resolve(im);im.onerror=reject;im.src=dataUrl});
@@ -280,7 +280,7 @@ function initNav(){document.querySelectorAll('.nav-item').forEach(b=>b.onclick=(
 function init(){
   syncRemoteGuessRound();bindEventFields();renderRounds();renderTeams();renderLeaderboard();renderLiveControl();initNav();save(false);
   $('#saveEvent').textContent=remoteSession()?'Sync Guess the Age':'Save changes';
-  $('#saveEvent').onclick=async()=>{if(remoteSession()){const r=state.rounds.find(x=>x.type==='guessAge');if(!r)return toast('No Guess the Age round');const valid=(r.settings.celebrities||[]).filter(c=>c.name&&c.dob);if(!valid.length)return toast('Add at least one celebrity');$('#saveEvent').disabled=true;try{await window.gameNightSupabaseActions.saveGuessAgeRound(r.title,valid);toast('Guess the Age synced')}catch(e){console.error(e);toast('Could not sync lineup')}finally{$('#saveEvent').disabled=false}}else{save(true);renderRounds();renderLiveControl()}};
+  $('#saveEvent').onclick=async()=>{if(remoteSession()){const r=state.rounds.find(x=>x.type==='guessAge');if(!r)return toast('No Guess the Age round');const celebrities=r.settings.celebrities||[],validationError=lineupValidationError(celebrities);if(validationError)return toast(validationError);$('#saveEvent').disabled=true;try{await window.gameNightSupabaseActions.saveGuessAgeRound(r.title,celebrities);toast('Guess the Age synced')}catch(e){console.error(e);toast('Could not sync lineup. Check each celebrity name and date of birth.')}finally{$('#saveEvent').disabled=false}}else{save(true);renderRounds();renderLiveControl()}};
   $('#resetDemo').onclick=()=>{if(confirm('Reset the prototype back to the demo event?')){localStorage.removeItem(STORE_KEY);localStorage.removeItem(LEGACY_KEY);location.reload()}};
   $('#addRound').onclick=openModal;$('#closeModal').onclick=closeModal;$('#modalBackdrop').onclick=closeModal;$('#closeDrawer').onclick=closeDrawer;$('#drawerBackdrop').onclick=closeDrawer;$('#doneRound').onclick=closeDrawer;$('#deleteRound').onclick=deleteRound;$('#addTeam').onclick=addTeam;
   $('#logoutHost').onclick=()=>window.dispatchEvent(new Event('game-night-host-logout'));
