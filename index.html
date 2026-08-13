@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Game Night Admin</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark">GN</div>
+        <div><strong>Game Night</strong><span>Host Admin</span></div>
+      </div>
+      <nav>
+        <button class="nav-item active" data-view="event"><span>◫</span> Event</button>
+        <button class="nav-item" data-view="live"><span>●</span> Live Control</button>
+        <button class="nav-item" data-view="teams"><span>◎</span> Teams</button>
+        <button class="nav-item" data-view="leaderboard"><span>↗</span> Leaderboard</button>
+      </nav>
+      <div class="sidebar-bottom">
+        <span class="status-dot"></span>
+        <div><strong>Local prototype</strong><small>Live display prototype</small></div>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">EVENT CONTROL</p>
+          <h1 id="eventTitle">Thursday Game Night</h1>
+        </div>
+        <div class="top-actions">
+          <button class="btn ghost" id="resetDemo">Reset demo</button>
+          <button class="btn primary" id="saveEvent">Save changes</button>
+        </div>
+      </header>
+
+      <section id="view-event" class="view active">
+        <div class="hero-grid">
+          <div class="panel event-card">
+            <div class="panel-heading">
+              <div><p class="label">EVENT DETAILS</p><h2>Build the night</h2></div>
+              <span class="pill ready">Draft</span>
+            </div>
+            <div class="form-grid">
+              <label>Event name<input id="eventName" type="text" /></label>
+              <label>Venue<input id="venueName" type="text" /></label>
+              <label>Date<input id="eventDate" type="date" /></label>
+              <label>Expected teams<input id="expectedTeams" type="number" min="1" max="50" /></label>
+            </div>
+          </div>
+
+          <div class="panel join-card">
+            <div class="panel-heading">
+              <div><p class="label">JOIN GAME</p><h2>Room <span id="roomCode">4821</span></h2></div>
+              <span class="pill mock">Mocked</span>
+            </div>
+            <div class="join-box">
+              <div class="fake-qr" aria-label="QR placeholder"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+              <div><strong id="connectedCount">4 teams connected</strong><p>QR joining will plug into this event later. For now, teams are managed manually.</p></div>
+            </div>
+            <button class="btn full" disabled>Show join screen</button>
+          </div>
+        </div>
+
+        <div class="section-heading">
+          <div><p class="eyebrow">RUN OF SHOW</p><h2>Rounds</h2><p>Choose the order for the night. Each game keeps its own settings but feeds the same event leaderboard.</p></div>
+          <button class="btn secondary" id="addRound">+ Add round</button>
+        </div>
+        <div id="roundsList" class="rounds-list"></div>
+      </section>
+
+      <section id="view-live" class="view">
+        <div class="section-heading compact"><div><p class="eyebrow">SHOW CONTROL</p><h2>Live Control</h2><p>Run the current round and decide exactly what appears on the pub screen.</p></div></div>
+        <div id="liveControl"></div>
+      </section>
+
+      <section id="view-teams" class="view">
+        <div class="section-heading compact">
+          <div><p class="eyebrow">PLAYERS</p><h2>Teams</h2><p>Manual for the prototype; later these will appear automatically when teams scan the QR code.</p></div>
+          <button class="btn secondary" id="addTeam">+ Add team</button>
+        </div>
+        <div class="panel"><div id="teamsTable"></div></div>
+      </section>
+
+      <section id="view-leaderboard" class="view">
+        <div class="section-heading compact">
+          <div><p class="eyebrow">NIGHT TOTALS</p><h2>Leaderboard</h2><p>This is the host-only view. The audience leaderboard will only appear when you choose to show it.</p></div>
+          <button class="btn secondary" onclick="document.querySelector('[data-view=live]').click()">Live control</button>
+        </div>
+        <div class="panel"><div id="leaderboardTable"></div></div>
+      </section>
+    </main>
+  </div>
+
+  <div class="drawer-backdrop" id="drawerBackdrop"></div>
+  <aside class="drawer" id="roundDrawer">
+    <div class="drawer-head">
+      <div><p class="eyebrow">ROUND EDITOR</p><h2 id="drawerTitle">Edit round</h2></div>
+      <button class="icon-btn" id="closeDrawer">×</button>
+    </div>
+    <div id="drawerBody" class="drawer-body"></div>
+    <div class="drawer-footer">
+      <button class="btn ghost" id="deleteRound">Delete round</button>
+      <button class="btn primary" id="doneRound">Done</button>
+    </div>
+  </aside>
+
+  <div class="modal-backdrop" id="modalBackdrop"></div>
+  <div class="modal" id="roundModal">
+    <div class="modal-head"><div><p class="eyebrow">ADD ROUND</p><h2>Choose a game</h2></div><button class="icon-btn" id="closeModal">×</button></div>
+    <div class="game-picker" id="gamePicker"></div>
+  </div>
+
+  <script src="admin.js"></script>
+</body>
+</html>
