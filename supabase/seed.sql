@@ -1,0 +1,1 @@
+-- Intentionally empty. Development fixtures live in transaction-isolated pgTAP tests.
