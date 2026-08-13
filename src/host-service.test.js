@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { createJoinableEvent, isAnonymousUser, saveGuessAgeRound, uploadCelebrityImage } from './host-service.js'
+import { createJoinableEvent, deleteOwnedEvent, isAnonymousUser, saveGuessAgeRound, uploadCelebrityImage } from './host-service.js'
 
 describe('Host service', () => {
   it('recognizes anonymous Auth users', () => {
@@ -26,4 +26,5 @@ describe('Host service', () => {
     const path=await uploadCelebrityImage({storage:{from}},'celebrity-id',new Blob(['image'],{type:'image/jpeg'}))
     expect(from).toHaveBeenCalledWith('celebrity-images');expect(path).toMatch(/^celebrities\/celebrity-id\/.+\.jpg$/)
   })
+  it('deletes an event only through the owner RPC',async()=>{const rpc=vi.fn().mockResolvedValue({data:null,error:null});await deleteOwnedEvent({rpc},'event-id');expect(rpc).toHaveBeenCalledWith('delete_event',{p_event_id:'event-id'})})
 })

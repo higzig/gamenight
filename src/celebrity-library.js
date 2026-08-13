@@ -30,6 +30,13 @@ export function lineupValidationError(celebrities) {
   return missingDob ? `${missingDob.name.trim()} needs a valid date of birth before syncing.` : null
 }
 
+export function wikidataDobFromClaims(payload) {
+  const claims = Object.values(payload?.claims?.P569 ?? {})
+  const value = claims.find(claim => claim?.rank !== 'deprecated' && claim?.mainsnak?.datavalue?.value?.precision >= 11)?.mainsnak?.datavalue?.value
+  const match = value?.time?.match(/^\+?(\d{4}-\d{2}-\d{2})T/)
+  return match?.[1] ?? null
+}
+
 export function hasCelebrityImage(celebrity) {
   return celebrity?.image_kind === 'storage' ? Boolean(celebrity.image_path) : celebrity?.image_kind === 'external' ? /^https:\/\//.test(celebrity.external_image_url ?? '') : false
 }

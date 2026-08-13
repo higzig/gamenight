@@ -1,5 +1,5 @@
 import { moveItem, runConfirmed } from './src/admin-controls.js';
-import { applyCelebrityRecord, createNewCelebrityDraft, dobInputValue, lineupValidationError, selectCelebrityMatch, shouldTryWikipedia, updateCelebrityDob } from './src/celebrity-library.js';
+import { applyCelebrityRecord, createNewCelebrityDraft, dobInputValue, lineupValidationError, selectCelebrityMatch, shouldTryWikipedia, updateCelebrityDob, wikidataDobFromClaims } from './src/celebrity-library.js';
 const STORE_KEY = 'gameNightAdminV3';
 const LEGACY_KEY = 'gameNightAdminV2';
 const CHANNEL_NAME = 'gameNightLiveV3';
@@ -160,7 +160,7 @@ function renderCelebs(r){
 }
 async function persistCelebrity(c){if(!remoteSession())return c;const submittedDob=c.dob;const saved=await window.gameNightSupabaseActions.saveCelebrity({...c,dob:submittedDob});applyCelebrityRecord(c,saved,storageBase(),{preserveDob:c.dob!==submittedDob});return c}
 async function ensureCelebrity(c){if(c.id)return c;if(!c.name||!c.dob)throw new Error('Enter name and DOB first');c.imageKind=c.image?.startsWith('https://')?'external':'none';c.imageSourceKind=c.imageKind==='external'?'manual_url':null;return persistCelebrity(c)}
-async function resolveCelebrity(r,i){if(!remoteSession())return;const c=r.settings.celebrities[i],lookupName=c.name,lookupDob=c.dob;if((lookupName||'').trim().length<3)return;try{const matches=await window.gameNightSupabaseActions.searchCelebrities(lookupName);if(c.name!==lookupName||c.dob!==lookupDob)return;const match=selectCelebrityMatch(matches,lookupName,lookupDob);if(match){applyCelebrityRecord(c,match,storageBase(),{preserveDob:Boolean(lookupDob)});renderCelebs(r);if(shouldTryWikipedia(match,c._wikiAttempted))await findWikipediaPhoto(r,i,null,true);return}if(c.dob){await ensureCelebrity(c);renderCelebs(r);if(shouldTryWikipedia({image_kind:c.imageKind,image_path:c.imagePath,external_image_url:c.image,wikipedia_checked_at:c.wikipediaCheckedAt},c._wikiAttempted))await findWikipediaPhoto(r,i,null,true)}}catch(e){console.error(e);toast('Celebrity library lookup failed') }}
+async function resolveCelebrity(r,i){if(!remoteSession())return;const c=r.settings.celebrities[i],lookupName=c.name,lookupDob=c.dob;if((lookupName||'').trim().length<3)return;try{const matches=await window.gameNightSupabaseActions.searchCelebrities(lookupName);if(c.name!==lookupName||c.dob!==lookupDob)return;const match=selectCelebrityMatch(matches,lookupName,lookupDob);if(match){applyCelebrityRecord(c,match,storageBase(),{preserveDob:Boolean(lookupDob)});renderCelebs(r);if(shouldTryWikipedia(match,c._wikiAttempted))await findWikipediaPhoto(r,i,null,true);return}if(c.dob)await ensureCelebrity(c);renderCelebs(r);if(!c._wikiAttempted)await findWikipediaPhoto(r,i,null,true)}catch(e){console.error(e);toast('Celebrity library lookup failed') }}
 async function resizeImageFile(file){
   const dataUrl=await new Promise((resolve,reject)=>{const fr=new FileReader();fr.onload=()=>resolve(fr.result);fr.onerror=reject;fr.readAsDataURL(file)});
   const img=await new Promise((resolve,reject)=>{const im=new Image();im.onload=()=>resolve(im);im.onerror=reject;im.src=dataUrl});
@@ -170,17 +170,18 @@ async function resizeImageFile(file){
   return canvas.toDataURL('image/jpeg',.82);
 }
 async function findWikipediaPhoto(r,i,button,automatic=false){
-  const c=r.settings.celebrities[i],name=(c.name||'').trim();if(!name){toast('Enter the celebrity name first');return}
+  const c=r.settings.celebrities[i],name=(c.name||'').trim(),dobAtLookup=c.dob;if(!name){toast('Enter the celebrity name first');return}
   const old=button?.textContent;c._wikiAttempted=true;if(button){button.disabled=true;button.textContent='Searching…'}else{c.libraryStatus='searching';renderCelebs(r)}
   try{
-    const url='https://en.wikipedia.org/w/api.php?'+new URLSearchParams({action:'query',generator:'search',gsrsearch:name,gsrlimit:'5',prop:'pageimages',piprop:'thumbnail|original',pithumbsize:'1200',format:'json',origin:'*'});
+    const url='https://en.wikipedia.org/w/api.php?'+new URLSearchParams({action:'query',generator:'search',gsrsearch:name,gsrlimit:'5',prop:'pageimages|pageprops',ppprop:'wikibase_item',piprop:'thumbnail|original',pithumbsize:'1200',format:'json',origin:'*'});
     const res=await fetch(url);if(!res.ok)throw new Error('Wikipedia request failed');const data=await res.json();
     const pages=Object.values(data?.query?.pages||{}).filter(p=>p.original?.source||p.thumbnail?.source);
     if(!pages.length){toast('No confident Wikipedia photo found');return}
     const exact=pages.find(p=>p.title.toLowerCase()===name.toLowerCase()),pick=exact||pages.sort((a,b)=>(a.index??99)-(b.index??99))[0];
     if(automatic&&!exact){toast('Wikipedia match was uncertain — use manual search or upload');return}
+    const wikidataId=pick.pageprops?.wikibase_item;if(wikidataId){const dobResponse=await fetch('https://www.wikidata.org/w/api.php?'+new URLSearchParams({action:'wbgetclaims',entity:wikidataId,property:'P569',format:'json',origin:'*'}));if(dobResponse.ok){const pulledDob=wikidataDobFromClaims(await dobResponse.json());if(pulledDob&&c.dob===dobAtLookup&&!c.dob)updateCelebrityDob(c,pulledDob)}}
     c.image=(pick.original&&pick.original.source)||pick.thumbnail.source;
-    c.imageKind='external';c.imagePath=null;c.imageSourceKind='wikipedia';c.sourceReference=pick.title;c.imageSource=`Wikipedia · ${pick.title}`;c.imageSourceUrl=`https://en.wikipedia.org/?curid=${pick.pageid}`;if(remoteSession()){await ensureCelebrity(c);await persistCelebrity(c)}save(false);renderCelebs(r);toast(`Added reusable Wikipedia photo for ${pick.title}`);
+    c.imageKind='external';c.imagePath=null;c.imageSourceKind='wikipedia';c.sourceReference=pick.title;c.imageSource=`Wikipedia · ${pick.title}`;c.imageSourceUrl=`https://en.wikipedia.org/?curid=${pick.pageid}`;if(remoteSession()&&c.dob){await ensureCelebrity(c);await persistCelebrity(c)}save(false);renderCelebs(r);toast(c.dob?`Added reusable Wikipedia details for ${pick.title}`:`Added the image for ${pick.title}; please confirm the date of birth`);
   }catch(err){console.error(err);toast('Wikipedia lookup failed — upload a photo instead');}
   finally{if(remoteSession()&&c.id){try{await window.gameNightSupabaseActions.markWikipediaChecked(c.id);c.wikipediaCheckedAt=new Date().toISOString()}catch{}}if(button){button.disabled=false;button.textContent=old}if(c.libraryStatus==='searching')c.libraryStatus=c.id?'existing':'new';renderCelebs(r)}
 }

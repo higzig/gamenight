@@ -24,6 +24,10 @@ export async function createJoinableEvent(client, fields) {
   return created.id
 }
 
+export function deleteOwnedEvent(client, eventId) {
+  return rpc(client, 'delete_event', { p_event_id: eventId })
+}
+
 export async function hydrateHostEvent(client, eventId) {
   const { data, error } = await client.rpc('get_host_event_state', { p_event_id: eventId })
   if (error) throw error

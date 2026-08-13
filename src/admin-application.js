@@ -62,9 +62,10 @@ export function createAdminApplication({
     try {
       const events = await services.listOwnedEvents(client)
       card(`<p class="eyebrow">YOUR EVENTS</p><h1>Choose a Game Night</h1><p>Open an existing event or create a new six-character room.</p>
-        <div id="ownedEvents">${events.map(event => `<div class="event-choice"><div><strong>${esc(event.name)}</strong><span>${esc(event.room_code)} · ${esc(event.event_date)} · ${esc(event.status)}</span></div><button class="btn secondary open-event" data-id="${event.id}">Open</button></div>`).join('') || '<p>No events yet.</p>'}</div>
+        <div id="ownedEvents">${events.map(event => `<div class="event-choice"><div><strong>${esc(event.name)}</strong><span>${esc(event.room_code)} · ${esc(event.event_date)} · ${esc(event.status)}</span></div><div class="event-choice-actions"><button class="btn secondary open-event" data-id="${event.id}">Open</button><button class="btn ghost delete-event" data-id="${event.id}" data-name="${esc(event.name)}">Delete</button></div></div>`).join('') || '<p>No events yet.</p>'}</div>
         <h2 style="margin-top:24px">Create event</h2>${createEventForm()}<p class="auth-error" id="gatewayError"></p><div class="auth-actions"><button class="btn ghost" id="chooserLogout">Log out</button></div>`)
       doc.querySelectorAll('.open-event').forEach(button => button.onclick = () => openEvent(button.dataset.id))
+      doc.querySelectorAll('.delete-event').forEach(button => button.onclick = async () => {if(!win.confirm(`Delete “${button.dataset.name}” permanently? Teams, rounds, submissions, and scores for this event will be removed.`))return;button.disabled=true;button.textContent='Deleting…';try{await services.deleteOwnedEvent(client,button.dataset.id);await renderEventChooser()}catch(error){console.error(error);button.disabled=false;button.textContent='Delete';errorTarget('Could not delete that event. Refresh and try again.')}})
       doc.getElementById('chooserLogout').onclick = logout
       doc.getElementById('createRemoteEvent').onsubmit = handleCreateEvent
     } catch (error) {

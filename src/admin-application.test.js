@@ -10,7 +10,7 @@ function deferred() {
   return { promise, resolve }
 }
 
-function setup({ session = { user: { is_anonymous: false } }, events = [], create, hydrate } = {}) {
+function setup({ session = { user: { is_anonymous: false } }, events = [], create, hydrate, remove } = {}) {
   document.body.innerHTML = '<main id="adminGateway"></main><div id="adminApp"></div>'
   const channel = { on: vi.fn().mockReturnThis(), subscribe: vi.fn().mockReturnThis() }
   const client = {
@@ -25,6 +25,7 @@ function setup({ session = { user: { is_anonymous: false } }, events = [], creat
     listOwnedEvents: vi.fn().mockResolvedValue(events),
     createJoinableEvent: create ?? vi.fn().mockResolvedValue('event-1'),
     hydrateHostEvent: hydrate ?? vi.fn().mockResolvedValue(snapshot),
+    deleteOwnedEvent: remove ?? vi.fn().mockResolvedValue(null),
   }
   const application = createAdminApplication({ client, configError: null, services, loadLegacyAdmin: vi.fn().mockResolvedValue({}) })
   return { application, client, services }
@@ -78,6 +79,7 @@ describe('Admin top-level application states', () => {
     expect(document.getElementById('adminGateway').hidden).toBe(true)
     expect(document.getElementById('adminApp').hidden).toBe(false)
   })
+  it('requires confirmation before deleting an event and then refreshes the chooser',async()=>{const remove=vi.fn().mockResolvedValue(null),events=[{id:'event-1',name:'Night',room_code:'ABC123',event_date:'2026-08-20',status:'lobby'}],{application,services}=setup({events,remove});window.confirm=vi.fn().mockReturnValue(false);await application.init();document.querySelector('.delete-event').click();await flush();expect(remove).not.toHaveBeenCalled();window.confirm.mockReturnValue(true);document.querySelector('.delete-event').click();await flush();await flush();expect(remove).toHaveBeenCalledWith(expect.anything(),'event-1');expect(services.listOwnedEvents).toHaveBeenCalledTimes(2)})
 
   it('Switch event returns to chooser and hides Admin', async () => {
     const { application } = setup()

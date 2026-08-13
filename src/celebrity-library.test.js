@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { applyCelebrityRecord, createNewCelebrityDraft, dobInputValue, hasCelebrityImage, lineupValidationError, selectCelebrityMatch, shouldTryWikipedia, updateCelebrityDob } from './celebrity-library.js'
+import { applyCelebrityRecord, createNewCelebrityDraft, dobInputValue, hasCelebrityImage, lineupValidationError, selectCelebrityMatch, shouldTryWikipedia, updateCelebrityDob, wikidataDobFromClaims } from './celebrity-library.js'
 
 const imageRecord={id:'c1',display_name:'Pedro Pascal',normalized_name:'pedropascal',date_of_birth:'1975-04-02',image_kind:'external',image_path:null,external_image_url:'https://img.example/pedro.jpg',image_source:'wikipedia',source_reference:'Pedro Pascal',wikipedia_checked_at:'2026-08-13'}
 describe('reusable celebrity editor model',()=>{
@@ -17,4 +17,6 @@ describe('reusable celebrity editor model',()=>{
   it('still populates the known DOB when selecting an existing celebrity without one',()=>{const draft={dob:''};applyCelebrityRecord(draft,imageRecord,'https://storage.example');expect(draft.dob).toBe('1975-04-02')})
   it('returns an actionable validation message for a missing DOB',()=>expect(lineupValidationError([{name:'Pedro Pascal',dob:''}])).toBe('Pedro Pascal needs a valid date of birth before syncing.'))
   it('accepts a valid name, DOB, and Wikipedia image lineup',()=>expect(lineupValidationError([{name:'Pedro Pascal',dob:'1975-04-02',image:imageRecord.external_image_url}])).toBe(null))
+  it('extracts a full-precision Wikidata DOB without Date conversion',()=>expect(wikidataDobFromClaims({claims:{P569:[{rank:'normal',mainsnak:{datavalue:{value:{time:'+1975-04-02T00:00:00Z',precision:11}}}}]}})).toBe('1975-04-02'))
+  it('rejects incomplete or deprecated Wikidata birth dates',()=>{expect(wikidataDobFromClaims({claims:{P569:[{rank:'normal',mainsnak:{datavalue:{value:{time:'+1975-04-00T00:00:00Z',precision:10}}}}]}})).toBe(null);expect(wikidataDobFromClaims({claims:{P569:[{rank:'deprecated',mainsnak:{datavalue:{value:{time:'+1975-04-02T00:00:00Z',precision:11}}}}]}})).toBe(null)})
 })
