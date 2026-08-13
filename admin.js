@@ -68,6 +68,9 @@ function answerCount(){return Object.keys(state.live.submissions||{}).length}
 function timeLeft(){if(!state.live.deadline)return 0;return Math.max(0,Math.ceil((state.live.deadline-Date.now())/1000))}
 function remoteSession(){return window.gameNightRemoteSession||null}
 function remoteTeams(){return remoteSession()?.teams||[]}
+function remoteGuessRound(){return remoteSession()?.rounds?.find(r=>r.game_type==='guess_age')||null}
+function remoteQuestion(){const s=remoteSession();return remoteGuessRound()?.questions?.find(q=>q.id===s?.event?.active_question_id)||remoteGuessRound()?.questions?.[0]||null}
+function remoteTimeLeft(){const s=remoteSession();if(!s?.event?.question_deadline_at)return 0;const serverAtHydration=new Date(s.server_now).getTime(),deadline=new Date(s.event.question_deadline_at).getTime(),elapsed=Date.now()-(s._hydratedAt||Date.now());return Math.max(0,Math.ceil((deadline-serverAtHydration-elapsed)/1000))}
 
 function bindEventFields(){
   const remote=remoteSession()?.event;
@@ -183,6 +186,7 @@ function renderLeaderboard(){const sorted=[...state.teams].sort((a,b)=>(b.total|
 function addTeam(){const id=Date.now();state.teams.push({id,name:`Team ${state.teams.length+1}`,scores:{},total:0});renderTeams();renderLeaderboard();renderLiveControl();save(false)}
 
 function renderLiveControl(){
+  if(remoteSession())return renderRemoteLiveControl();
   const guessRounds=state.rounds.filter(r=>r.type==='guessAge');
   if(!guessRounds.length){$('#liveControl').innerHTML='<div class="empty-state"><strong>Add a Guess the Age round first.</strong></div>';return;}
   if(!guessRounds.some(r=>r.id===state.live.activeRoundId)) state.live.activeRoundId=guessRounds[0].id;
@@ -231,6 +235,18 @@ function renderLiveControl(){
   $('#nextQuestion').onclick=nextQuestion;
   $('#showLeaderboard').onclick=()=>{state.live.status='leaderboard';state.live.deadline=null;save(false);renderLiveControl()};
 }
+function renderRemoteLeaderboard(){const board=remoteSession()?.leaderboard||[];$('#leaderboardTable').innerHTML=`<table><thead><tr><th>Place</th><th>Team</th><th>Points</th></tr></thead><tbody>${board.map((t,i)=>`<tr><td>${i+1}</td><td><strong>${esc(t.name)}</strong></td><td>${t.points||0}</td></tr>`).join('')||'<tr><td colspan="3">No scores yet</td></tr>'}</tbody></table>`}
+function renderRemoteLiveControl(){
+  const s=remoteSession(),r=remoteGuessRound(),questions=r?.questions||[],event=s.event,q=remoteQuestion(),status=event.status,left=remoteTimeLeft(),submitted=new Map((s.submissions||[]).filter(x=>x.guess_integer!=null).map(x=>[x.team_id,x])),awards=new Map((s.awards||[]).map(x=>[x.team_id,x]));
+  const rows=remoteTeams().map(t=>{const sub=submitted.get(t.id),award=awards.get(t.id);return `<tr><td>${esc(t.name)}</td><td>${sub?.guess_integer??'—'}</td><td>${sub?'<span class="submission done">Locked</span>':'<span class="submission waiting">Waiting</span>'}${award?` · +${award.points}`:''}</td></tr>`}).join('');
+  $('#liveControl').innerHTML=`<div class="live-toolbar panel"><div><p class="eyebrow">SUPABASE LIVE EVENT</p><h2>${esc(event.name)}</h2><p class="hint">Authoritative gameplay across physical devices. Room ${esc(event.room_code)}</p></div><div class="top-actions"><button class="btn secondary" id="openAudience">Open audience ↗</button><button class="btn secondary" id="openTeamTest">Open Team ↗</button><button class="btn ghost" id="audienceIdle">Holding screen</button></div></div>
+  <div class="live-grid"><div class="panel live-main"><div class="panel-heading"><div><p class="label">GUESS THE AGE</p><h2>${esc(r?.title||'Not synced yet')}</h2></div><span class="pill ${status==='question'?'live':'ready'}">${esc(status)}</span></div>
+  ${r?`<label class="field">Question<select id="remoteQuestionSelect">${questions.map(x=>`<option value="${x.id}" ${x.id===q?.id?'selected':''}>${x.position}. ${esc(x.celebrity_name)}</option>`).join('')}</select></label><div class="question-preview"><div class="preview-art">${q?.external_image_url?`<div class="preview-art-bg" style="background-image:url('${esc(q.external_image_url)}')"></div><img class="preview-art-main" src="${esc(q.external_image_url)}" alt="">`:`<span>${esc((q?.celebrity_name||'?').split(' ').map(x=>x[0]).slice(0,2).join(''))}</span>`}</div><div><p class="eyebrow">QUESTION ${q?.position||0} OF ${questions.length}</p><h3>${esc(q?.celebrity_name||'Select a question')}</h3><p>Correct age: <strong>${status==='reveal'?ageOn(q?.date_of_birth,event.event_date):'hidden'}</strong></p></div><div class="timer-chip"><span>${status==='question'?left:15}</span><small>SECONDS</small></div></div><div class="live-actions"><button class="btn primary" id="startQuestion" ${!q||status==='question'?'disabled':''}>Start 15s question</button><button class="btn secondary" id="lockQuestion" ${status!=='question'?'disabled':''}>Lock answers</button><button class="btn secondary" id="revealAnswer" ${!['question','locked','reveal'].includes(status)?'disabled':''}>Reveal + score</button><button class="btn ghost" id="nextQuestion" ${!['locked','reveal'].includes(status)?'disabled':''}>Next question →</button></div>`:`<div class="empty-state"><strong>Sync the local Guess the Age lineup first.</strong><p class="hint">Use “Sync Guess the Age” in the Event screen. Base64 uploads are skipped; external/Wikipedia URLs are supported.</p></div>`}
+  <div class="live-meta"><span><strong>${submitted.size}/${remoteTeams().length}</strong> Teams answered</span><span>Server-authoritative deadline</span><span>Scoring is idempotent</span></div></div><div class="panel live-side"><div class="panel-heading"><div><p class="label">TEAM SUBMISSIONS</p><h2>Team answers</h2></div><span class="pill ready">Authoritative</span></div><div class="submission-table"><table><thead><tr><th>Team</th><th>Age</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table></div><button class="btn full" id="showLeaderboard">Show leaderboard</button></div></div>`;
+  $('#openAudience').onclick=()=>window.open(`audience.html?room=${encodeURIComponent(event.room_code)}`,'gameNightAudience');$('#openTeamTest').onclick=()=>window.open(`team.html?room=${encodeURIComponent(event.room_code)}`,'_blank');$('#audienceIdle').onclick=()=>window.gameNightSupabaseActions.setDisplay('lobby');$('#showLeaderboard').onclick=()=>window.gameNightSupabaseActions.setDisplay('leaderboard');
+  if(r){$('#startQuestion').onclick=()=>window.gameNightSupabaseActions.startQuestion($('#remoteQuestionSelect').value);$('#lockQuestion').onclick=()=>window.gameNightSupabaseActions.lockQuestion();$('#revealAnswer').onclick=()=>window.gameNightSupabaseActions.revealQuestion();$('#nextQuestion').onclick=()=>window.gameNightSupabaseActions.advanceQuestion();}
+  if(status==='question'){clearInterval(liveTicker);liveTicker=setInterval(()=>{if(remoteTimeLeft()<=0){clearInterval(liveTicker);renderRemoteLiveControl()}else renderRemoteLiveControl()},250)}
+}
 function resetQuestion(status='ready'){state.live.status=status;state.live.deadline=null;state.live.submissions={};state.live.lastAwarded=[]}
 function startQuestion(){const r=currentRound();if(!r||!currentCelebrity())return;state.live.status='question';state.live.submissions={};state.live.lastAwarded=[];state.live.deadline=Date.now()+(r.settings.timer||15)*1000;save(false);renderLiveControl();startTicker()}
 function startTicker(){clearInterval(liveTicker);liveTicker=setInterval(()=>{if(state.live.status!=='question'){clearInterval(liveTicker);return}if(timeLeft()<=0){lockQuestion();return}renderLiveControl()},250)}
@@ -247,13 +263,14 @@ function deleteRound(){if(!editingRoundId)return;state.rounds=state.rounds.filte
 function initNav(){document.querySelectorAll('.nav-item').forEach(b=>b.onclick=()=>{document.querySelectorAll('.nav-item').forEach(x=>x.classList.toggle('active',x===b));document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));$('#view-'+b.dataset.view).classList.add('active');if(b.dataset.view==='live')renderLiveControl()})}
 function init(){
   bindEventFields();renderRounds();renderTeams();renderLeaderboard();renderLiveControl();initNav();save(false);
-  $('#saveEvent').onclick=()=>{save(true);renderRounds();renderLiveControl()};
+  $('#saveEvent').textContent=remoteSession()?'Sync Guess the Age':'Save changes';
+  $('#saveEvent').onclick=async()=>{if(remoteSession()){const r=state.rounds.find(x=>x.type==='guessAge');if(!r)return toast('No Guess the Age round');const valid=(r.settings.celebrities||[]).filter(c=>c.name&&c.dob);if(!valid.length)return toast('Add at least one celebrity');$('#saveEvent').disabled=true;try{await window.gameNightSupabaseActions.saveGuessAgeRound(r.title,valid);toast('Guess the Age synced')}catch(e){console.error(e);toast('Could not sync lineup')}finally{$('#saveEvent').disabled=false}}else{save(true);renderRounds();renderLiveControl()}};
   $('#resetDemo').onclick=()=>{if(confirm('Reset the prototype back to the demo event?')){localStorage.removeItem(STORE_KEY);localStorage.removeItem(LEGACY_KEY);location.reload()}};
   $('#addRound').onclick=openModal;$('#closeModal').onclick=closeModal;$('#modalBackdrop').onclick=closeModal;$('#closeDrawer').onclick=closeDrawer;$('#drawerBackdrop').onclick=closeDrawer;$('#doneRound').onclick=closeDrawer;$('#deleteRound').onclick=deleteRound;$('#addTeam').onclick=addTeam;
   $('#logoutHost').onclick=()=>window.dispatchEvent(new Event('game-night-host-logout'));
   $('#switchEvent').onclick=()=>window.dispatchEvent(new Event('game-night-switch-events'));
   $('#copyTeamLink').onclick=async()=>{const code=remoteSession()?.event?.room_code;if(!code)return;const url=new URL('team.html',location.href);url.searchParams.set('room',code);try{await navigator.clipboard.writeText(url.href);toast('Team join link copied')}catch{toast(`Room code: ${code}`)}};
   window.addEventListener('storage',e=>{if(e.key===STORE_KEY&&e.newValue){state=migrate(JSON.parse(e.newValue));renderLeaderboard();renderLiveControl()}});
-  window.addEventListener('game-night-remote-state',e=>{window.gameNightRemoteSession=e.detail;bindEventFields();renderTeams();renderLiveControl()});
+  window.addEventListener('game-night-remote-state',e=>{e.detail._hydratedAt=Date.now();window.gameNightRemoteSession=e.detail;bindEventFields();renderTeams();renderRemoteLeaderboard();renderLiveControl()});
 }
 init();

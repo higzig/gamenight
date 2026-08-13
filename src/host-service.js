@@ -30,3 +30,41 @@ export async function hydrateHostEvent(client, eventId) {
   if (!data) throw new Error('Event not found or access denied.')
   return data
 }
+
+async function rpc(client, name, args) {
+  const { data, error } = await client.rpc(name, args)
+  if (error) throw error
+  return data
+}
+
+export function saveGuessAgeRound(client, eventId, title, celebrities) {
+  return rpc(client, 'save_guess_age_round', {
+    p_event_id: eventId,
+    p_title: title,
+    p_questions: celebrities.map(celebrity => ({
+      celebrity_name: celebrity.name,
+      date_of_birth: celebrity.dob,
+      external_image_url: celebrity.image?.startsWith('https://') ? celebrity.image : null,
+    })),
+  })
+}
+
+export function startRemoteQuestion(client, eventId, questionId) {
+  return rpc(client, 'start_question', { p_event_id: eventId, p_question_id: questionId, p_duration_seconds: 15 })
+}
+
+export function lockRemoteQuestion(client, eventId) {
+  return rpc(client, 'lock_question', { p_event_id: eventId })
+}
+
+export function revealRemoteQuestion(client, eventId) {
+  return rpc(client, 'reveal_question', { p_event_id: eventId })
+}
+
+export function advanceRemoteQuestion(client, eventId) {
+  return rpc(client, 'advance_guess_age_question', { p_event_id: eventId })
+}
+
+export function setRemoteDisplay(client, eventId, status) {
+  return rpc(client, 'set_event_display', { p_event_id: eventId, p_status: status })
+}

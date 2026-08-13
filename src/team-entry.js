@@ -1,54 +1,26 @@
 import { createGameNightClient, getSupabaseConfigError } from './supabase-client.js'
-import { ensureAnonymousSession, hydrateTeam, joinTeam, normalizeRoom, ROOM_PATTERN } from './team-service.js'
+import { ensureAnonymousSession, hydrateTeam, joinTeam, normalizeRoom, ROOM_PATTERN, secondsRemaining, submitGuess } from './team-service.js'
 
-const root = document.getElementById('teamApp')
-const supabase = createGameNightClient('game-night-team-auth')
-const room = normalizeRoom(new URLSearchParams(location.search).get('room') ?? '')
+const root=document.getElementById('teamApp'),supabase=createGameNightClient('game-night-team-auth'),room=normalizeRoom(new URLSearchParams(location.search).get('room')??'')
+let state=null,channel=null,ticker=null,guess='',submitting=false
+const esc=(v='')=>String(v).replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]))
+const shell=content=>{root.innerHTML=`<div class="app"><div class="top"><div class="brand"><div class="mark">GN</div>${esc(state?.team?.name||'Game Night')}</div><div class="room">ROOM ${esc(room||'LOCAL')}</div></div>${content}</div>`}
 
-function esc(value = '') {
-  return String(value).replace(/[&<>'"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' })[c])
+function renderJoin(message=''){
+  shell(`<section class="card"><p class="eyebrow">JOIN GAME</p><h1>Join your Team</h1><div class="room-code">${esc(room)}</div><p class="muted">Enter a Team name for this device.</p>${message?`<div class="error-box">${esc(message)}</div>`:''}<form id="remoteJoin"><div class="field"><label>Team name</label><input id="remoteTeamName" minlength="1" maxlength="80" required></div><button class="btn primary full" type="submit">Join room</button></form></section>`)
+  document.getElementById('remoteJoin').onsubmit=async e=>{e.preventDefault();e.submitter.disabled=true;try{state=await joinTeam(supabase,room,document.getElementById('remoteTeamName').value);markHydrated();await subscribe();render()}catch(err){console.error(err);renderJoin('Unable to join that room. Check the code or ask the Host.')}}
 }
-
-function shell(content) {
-  root.innerHTML = `<div class="app"><div class="top"><div class="brand"><div class="mark">GN</div>Game Night</div><div class="room">ROOM ${esc(room || 'LOCAL')}</div></div>${content}</div>`
+function markHydrated(){if(state)state._hydratedAt=Date.now()}
+async function hydrate(){const next=await hydrateTeam(supabase,room);if(next){state=next;markHydrated();render()}return next}
+function image(q){const url=q?.external_image_url||(q?.image_kind==='storage'?`${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/public/celebrity-images/${q.image_path}`:'');return url?`<div class="team-celeb-bg" style="background-image:url('${esc(url)}')"></div><img class="team-celeb-main" src="${esc(url)}" alt="${esc(q.celebrity_name)}">`:`<span class="team-celeb-initials">${esc((q?.celebrity_name||'?').split(' ').map(x=>x[0]).slice(0,2).join(''))}</span>`}
+function render(){clearInterval(ticker);if(!state?.team)return renderJoin();const e=state.event,q=state.question,sub=state.submission,award=state.award,left=secondsRemaining(state),expired=e.status==='question'&&left<=0,open=e.status==='question'&&e.accepting_answers&&!expired&&!sub;
+  if(e.status==='leaderboard')return shell(`<section class="card"><p class="eyebrow">CURRENT STANDINGS</p><h1>Leaderboard</h1>${(state.leaderboard||[]).map((x,i)=>`<div class="leader"><span class="place">${i+1}</span><strong>${esc(x.name)}</strong><b>${x.points} pts</b></div>`).join('')}</section>`)
+  if(!q||['lobby','ready','round_complete'].includes(e.status))return shell(`<div class="waiting"><section class="card"><div class="status-orb">${e.status==='round_complete'?'✓':'…'}</div><p class="eyebrow">${e.status==='round_complete'?'ROUND COMPLETE':'GET READY'}</p><h1>${e.status==='round_complete'?'Nice work.':'Waiting for the Host'}</h1><p class="muted">Your controls will appear when the next question starts.</p></section></div>`)
+  const revealed=e.status==='reveal';shell(`<section class="card question ${sub||!open?'locked':''}"><div class="qhead"><div><p class="eyebrow">${revealed?'ANSWER REVEALED':sub?'ANSWER LOCKED':expired||e.status==='locked'?'TIME UP':'GUESS THE AGE'}</p><strong>${esc(q.celebrity_name)}</strong></div><div class="timer">${open?left:'✓'}</div></div><div class="team-celeb">${image(q)}<div class="team-celeb-name">${esc(q.celebrity_name)}</div></div>${revealed?`<h1>Actual age: ${q.correct_age}</h1><div class="result"><div class="stat"><span>Your guess</span><strong>${sub?.guess_integer??'—'}</strong></div><div class="stat"><span>Points</span><strong>+${award?.points??0}</strong></div><div class="stat"><span>Difference</span><strong>${award?.metadata?.difference??'—'}</strong></div></div>`:`<h1>${sub?'Locked in':'How old are they?'}</h1><div class="age keypad-display ${!guess&&!sub?'empty':''}">${sub?.guess_integer??(guess||'—')}</div><div class="keypad">${[1,2,3,4,5,6,7,8,9].map(n=>`<button class="key" data-digit="${n}" ${open?'':'disabled'}>${n}</button>`).join('')}<button class="key action" id="clearGuess" ${open?'':'disabled'}>C</button><button class="key" data-digit="0" ${open?'':'disabled'}>0</button><button class="key action" id="backspaceGuess" ${open?'':'disabled'}>⌫</button></div><button class="btn primary full lock-answer" id="lockBtn" ${!open||!guess||submitting?'disabled':''}>${sub?'Locked in ✓':expired?'Time expired':submitting?'Locking…':guess?`Lock in ${guess}`:'Enter an age'}</button>`}</section>`)
+  if(!revealed){document.querySelectorAll('[data-digit]').forEach(b=>b.onclick=()=>{const next=(guess+b.dataset.digit).replace(/^0+(?=\d)/,'');if(next.length<=3&&Number(next)<=120){guess=next;render()}});document.getElementById('clearGuess').onclick=()=>{guess='';render()};document.getElementById('backspaceGuess').onclick=()=>{guess=guess.slice(0,-1);render()};document.getElementById('lockBtn').onclick=async()=>{if(submitting||!open)return;submitting=true;render();try{await submitGuess(supabase,state.team.id,q.id,Number(guess));guess='';await hydrate()}catch(err){console.error(err);await hydrate()}finally{submitting=false;render()}}}
+  if(e.status==='question')ticker=setInterval(()=>{if(secondsRemaining(state)<=0)render();else{const el=document.querySelector('.timer');if(el)el.textContent=secondsRemaining(state)}},250)
 }
-
-function renderJoin(message = '') {
-  shell(`<section class="card"><p class="eyebrow">JOIN GAME</p><h1>Join your Team</h1><div class="room-code">${esc(room)}</div><p class="muted">Enter a Team name for this device. Your secure anonymous session owns this Team membership.</p>${message ? `<div class="error-box">${esc(message)}</div>` : ''}<form id="remoteJoin"><div class="field"><label>Team name</label><input id="remoteTeamName" minlength="1" maxlength="80" autocomplete="organization" required></div><button class="btn primary full" type="submit">Join room</button></form><div class="phase-note">Phase 2A connects your Team identity. Live Guess the Age controls remain in the separate local prototype until the next gameplay phase.</div></section>`)
-  document.getElementById('remoteJoin').onsubmit = async event => {
-    event.preventDefault(); const button = event.submitter; button.disabled = true
-    try {
-      const state = await joinTeam(supabase, room, document.getElementById('remoteTeamName').value)
-      renderJoined(state)
-    } catch (error) {
-      console.error(error); renderJoin('Unable to join that room. Check the code or ask the Host to open the lobby.')
-    }
-  }
-}
-
-function renderJoined(state) {
-  const team = state?.team
-  if (!team) return renderJoin()
-  shell(`<div class="waiting"><section class="card"><div class="status-orb">✓</div><p class="eyebrow">TEAM JOINED</p><h1>${esc(team.name)}</h1><p class="muted">This device is securely joined to room ${esc(room)}. Refreshing will recover the same Team while this anonymous session remains on the device.</p><div class="phase-note">Gameplay is not connected to Supabase in Phase 2A. Keep this page open for identity and room verification only.</div></section></div>`)
-}
-
-async function initRemoteTeam() {
-  const configError = getSupabaseConfigError()
-  if (configError) return shell(`<section class="card"><h1>Configuration required</h1><div class="error-box">${esc(configError)}</div></section>`)
-  shell('<div class="waiting"><section class="card"><div class="status-orb">…</div><p class="eyebrow">CONNECTING</p><h1>Joining room</h1></section></div>')
-  try {
-    await ensureAnonymousSession(supabase)
-    const state = await hydrateTeam(supabase, room)
-    state?.team ? renderJoined(state) : renderJoin()
-  } catch (error) {
-    console.error(error); renderJoin('Unable to connect to that room right now.')
-  }
-}
-
-if (!room) {
-  import('../team.js')
-} else if (!ROOM_PATTERN.test(room)) {
-  shell('<section class="card"><p class="eyebrow">INVALID ROOM</p><h1>Check the join link</h1><p class="muted">Room codes contain exactly six uppercase letters or numbers.</p></section>')
-} else {
-  initRemoteTeam()
-}
+async function subscribe(){if(channel)await supabase.removeChannel(channel);channel=supabase.channel(`event:${state.event.id}:public`,{config:{private:true}}).on('broadcast',{event:'state_changed'},hydrate).subscribe(status=>{if(status==='SUBSCRIBED')hydrate()})}
+async function init(){if(getSupabaseConfigError())return shell('<section class="card"><h1>Configuration required</h1></section>');shell('<div class="waiting"><section class="card"><div class="status-orb">…</div><h1>Connecting</h1></section></div>');try{await ensureAnonymousSession(supabase);state=await hydrateTeam(supabase,room);markHydrated();if(state?.team){await subscribe();render()}else renderJoin()}catch(err){console.error(err);renderJoin('Unable to connect to that room right now.')}}
+document.addEventListener('visibilitychange',()=>{if(!document.hidden&&state?.team)hydrate()});supabase?.auth.onAuthStateChange((event)=>{if(event==='TOKEN_REFRESHED'&&state?.team)hydrate()})
+if(!room)import('../team.js');else if(!ROOM_PATTERN.test(room))shell('<section class="card"><h1>Invalid room</h1><p class="muted">Check the six-character code.</p></section>');else init()

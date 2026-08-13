@@ -97,6 +97,15 @@ export function createAdminApplication({
     const snapshot = await services.hydrateHostEvent(client, eventId)
     activeEventId = eventId
     win.gameNightRemoteSession = snapshot
+    win.gameNightSupabaseActions = {
+      saveGuessAgeRound: (title, celebrities) => services.saveGuessAgeRound(client, eventId, title, celebrities).then(refreshActiveEvent),
+      startQuestion: questionId => services.startRemoteQuestion(client, eventId, questionId).then(refreshActiveEvent),
+      lockQuestion: () => services.lockRemoteQuestion(client, eventId).then(refreshActiveEvent),
+      revealQuestion: () => services.revealRemoteQuestion(client, eventId).then(refreshActiveEvent),
+      advanceQuestion: () => services.advanceRemoteQuestion(client, eventId).then(refreshActiveEvent),
+      setDisplay: status => services.setRemoteDisplay(client, eventId, status).then(refreshActiveEvent),
+      refresh: refreshActiveEvent,
+    }
     if (!legacyLoaded) { legacyLoaded = true; await loadLegacyAdmin() }
     transition('active-event')
     win.dispatchEvent(new CustomEvent('game-night-remote-state', { detail: snapshot }))
@@ -119,13 +128,13 @@ export function createAdminApplication({
 
   async function backToEvents() {
     if (activeChannel) await client.removeChannel(activeChannel)
-    activeChannel = null; activeEventId = null; win.gameNightRemoteSession = null
+    activeChannel = null; activeEventId = null; win.gameNightRemoteSession = null; win.gameNightSupabaseActions = null
     await renderEventChooser()
   }
 
   async function logout() {
     if (activeChannel) await client.removeChannel(activeChannel)
-    activeChannel = null; activeEventId = null; win.gameNightRemoteSession = null
+    activeChannel = null; activeEventId = null; win.gameNightRemoteSession = null; win.gameNightSupabaseActions = null
     await client.auth.signOut(); renderSignIn()
   }
 

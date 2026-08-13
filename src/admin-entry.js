@@ -1,5 +1,5 @@
 import { createGameNightClient, getSupabaseConfigError } from './supabase-client.js'
-import { createJoinableEvent, hydrateHostEvent, isAnonymousUser, listOwnedEvents } from './host-service.js'
+import { advanceRemoteQuestion, createJoinableEvent, hydrateHostEvent, isAnonymousUser, listOwnedEvents, lockRemoteQuestion, revealRemoteQuestion, saveGuessAgeRound, setRemoteDisplay, startRemoteQuestion } from './host-service.js'
 import { createAdminApplication } from './admin-application.js'
 
 const supabase = createGameNightClient('game-night-host-auth')
@@ -7,7 +7,7 @@ const supabase = createGameNightClient('game-night-host-auth')
 const application = createAdminApplication({
   client: supabase,
   configError: getSupabaseConfigError(),
-  services: { createJoinableEvent, hydrateHostEvent, isAnonymousUser, listOwnedEvents },
+  services: { advanceRemoteQuestion, createJoinableEvent, hydrateHostEvent, isAnonymousUser, listOwnedEvents, lockRemoteQuestion, revealRemoteQuestion, saveGuessAgeRound, setRemoteDisplay, startRemoteQuestion },
   loadLegacyAdmin: () => import('../admin.js'),
 })
 

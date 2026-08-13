@@ -28,3 +28,17 @@ export async function joinTeam(client, roomCode, teamName) {
   if (error) throw error
   return hydrateTeam(client, roomCode)
 }
+
+export async function submitGuess(client, teamId, questionId, guess) {
+  const { data, error } = await client.rpc('submit_guess', { p_team_id: teamId, p_question_id: questionId, p_guess: guess })
+  if (error) throw error
+  return data
+}
+
+export function secondsRemaining(state, now = Date.now()) {
+  const deadline = Date.parse(state?.event?.question_deadline_at || '')
+  const serverNow = Date.parse(state?.server_now || '')
+  const hydratedAt = state?._hydratedAt || now
+  if (!Number.isFinite(deadline) || !Number.isFinite(serverNow)) return 0
+  return Math.max(0, Math.ceil((deadline - serverNow - (now - hydratedAt)) / 1000))
+}
