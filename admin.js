@@ -251,6 +251,7 @@ function init(){
   $('#resetDemo').onclick=()=>{if(confirm('Reset the prototype back to the demo event?')){localStorage.removeItem(STORE_KEY);localStorage.removeItem(LEGACY_KEY);location.reload()}};
   $('#addRound').onclick=openModal;$('#closeModal').onclick=closeModal;$('#modalBackdrop').onclick=closeModal;$('#closeDrawer').onclick=closeDrawer;$('#drawerBackdrop').onclick=closeDrawer;$('#doneRound').onclick=closeDrawer;$('#deleteRound').onclick=deleteRound;$('#addTeam').onclick=addTeam;
   $('#logoutHost').onclick=()=>window.dispatchEvent(new Event('game-night-host-logout'));
+  $('#switchEvent').onclick=()=>window.dispatchEvent(new Event('game-night-switch-events'));
   $('#copyTeamLink').onclick=async()=>{const code=remoteSession()?.event?.room_code;if(!code)return;const url=new URL('team.html',location.href);url.searchParams.set('room',code);try{await navigator.clipboard.writeText(url.href);toast('Team join link copied')}catch{toast(`Room code: ${code}`)}};
   window.addEventListener('storage',e=>{if(e.key===STORE_KEY&&e.newValue){state=migrate(JSON.parse(e.newValue));renderLeaderboard();renderLiveControl()}});
   window.addEventListener('game-night-remote-state',e=>{window.gameNightRemoteSession=e.detail;bindEventFields();renderTeams();renderLiveControl()});
