@@ -106,6 +106,10 @@ export function createAdminApplication({
       setDisplay: status => services.setRemoteDisplay(client, eventId, status).then(refreshActiveEvent),
       restartRound: () => services.restartGuessAgeRound(client, eventId).then(refreshActiveEvent),
       reorderQuestion: (questionId, direction) => services.reorderGuessAgeQuestion(client, eventId, questionId, direction).then(refreshActiveEvent),
+      searchCelebrities: query => services.searchCelebrityLibrary(client, query),
+      saveCelebrity: celebrity => services.saveCelebrityRecord(client, celebrity),
+      uploadCelebrityImage: (celebrityId, blob) => services.uploadCelebrityImage(client, celebrityId, blob),
+      markWikipediaChecked: celebrityId => services.markWikipediaChecked(client, celebrityId),
       startNewSession: async () => {
         const newId = await services.copyEventSession(client, eventId)
         await openEvent(newId)

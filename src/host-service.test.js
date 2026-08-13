@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { createJoinableEvent, isAnonymousUser } from './host-service.js'
+import { createJoinableEvent, isAnonymousUser, saveGuessAgeRound, uploadCelebrityImage } from './host-service.js'
 
 describe('Host service', () => {
   it('recognizes anonymous Auth users', () => {
@@ -14,5 +14,15 @@ describe('Host service', () => {
     const id = await createJoinableEvent({ rpc }, { name: 'Night', venue: 'Pub', eventDate: '2026-08-20', expectedTeams: 12 })
     expect(id).toBe('event-id')
     expect(rpc.mock.calls.map(call => call[0])).toEqual(['create_event', 'open_event_lobby'])
+  })
+  it('saves lineup references and reusable media instead of base64 data', async () => {
+    const rpc=vi.fn().mockResolvedValue({data:'round-id',error:null})
+    await saveGuessAgeRound({rpc},'event-id','Guess the Age',[{id:'celebrity-id',name:'Pedro Pascal',dob:'1975-04-02',imageKind:'storage',imagePath:'celebrities/celebrity-id/photo.jpg',imageSourceKind:'upload'}])
+    expect(rpc.mock.calls[0][1].p_questions[0]).toMatchObject({celebrity_id:'celebrity-id',image_path:'celebrities/celebrity-id/photo.jpg',external_image_url:null})
+  })
+  it('uploads compressed media under the celebrity-owned path', async () => {
+    const upload=vi.fn().mockResolvedValue({error:null}),from=vi.fn(()=>({upload}))
+    const path=await uploadCelebrityImage({storage:{from}},'celebrity-id',new Blob(['image'],{type:'image/jpeg'}))
+    expect(from).toHaveBeenCalledWith('celebrity-images');expect(path).toMatch(/^celebrities\/celebrity-id\/.+\.jpg$/)
   })
 })

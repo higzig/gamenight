@@ -1,4 +1,5 @@
 import { moveItem, runConfirmed } from './src/admin-controls.js';
+import { applyCelebrityRecord, selectCelebrityMatch, shouldTryWikipedia } from './src/celebrity-library.js';
 const STORE_KEY = 'gameNightAdminV3';
 const LEGACY_KEY = 'gameNightAdminV2';
 const CHANNEL_NAME = 'gameNightLiveV3';
@@ -70,7 +71,8 @@ function timeLeft(){if(!state.live.deadline)return 0;return Math.max(0,Math.ceil
 function remoteSession(){return window.gameNightRemoteSession||null}
 function remoteTeams(){return remoteSession()?.teams||[]}
 function remoteGuessRound(){return remoteSession()?.rounds?.find(r=>r.game_type==='guess_age')||null}
-function syncRemoteGuessRound(){const remote=remoteGuessRound();if(!remote)return;let local=state.rounds.find(r=>r.type==='guessAge');if(!local){local={id:'remote-guess-age',type:'guessAge',title:remote.title,settings:{timer:15,points:'bands',celebrities:[]}};state.rounds.unshift(local)}local.title=remote.title;local.settings.timer=15;local.settings.celebrities=(remote.questions||[]).map(q=>({id:q.id,name:q.celebrity_name,dob:q.date_of_birth,image:q.external_image_url||'',imageSource:q.external_image_url?'Synced URL':'',imageSourceUrl:q.external_image_url||''}))}
+function storageBase(){return `${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/public/celebrity-images`}
+function syncRemoteGuessRound(){const remote=remoteGuessRound();if(!remote)return;let local=state.rounds.find(r=>r.type==='guessAge');if(!local){local={id:'remote-guess-age',type:'guessAge',title:remote.title,settings:{timer:15,points:'bands',celebrities:[]}};state.rounds.unshift(local)}local.title=remote.title;local.settings.timer=15;local.settings.celebrities=(remote.questions||[]).map(q=>({id:q.celebrity_id,questionId:q.id,name:q.celebrity_name,dob:q.date_of_birth,imageKind:q.image_kind,imagePath:q.image_path,image:q.image_kind==='storage'&&q.image_path?`${storageBase()}/${q.image_path}`:(q.external_image_url||''),imageSourceKind:q.image_source,sourceReference:q.source_reference,imageSource:q.image_source?`Reusable · ${q.image_source}`:'',imageSourceUrl:q.external_image_url||'',libraryStatus:q.celebrity_id?'existing':'new'}))}
 function remoteQuestion(){const s=remoteSession();return remoteGuessRound()?.questions?.find(q=>q.id===s?.event?.active_question_id)||remoteGuessRound()?.questions?.[0]||null}
 function remoteTimeLeft(){const s=remoteSession();if(!s?.event?.question_deadline_at)return 0;const serverAtHydration=new Date(s.server_now).getTime(),deadline=new Date(s.event.question_deadline_at).getTime(),elapsed=Date.now()-(s._hydratedAt||Date.now());return Math.max(0,Math.ceil((deadline-serverAtHydration-elapsed)/1000))}
 
@@ -126,8 +128,9 @@ function renderCelebs(r){
       ${c.imageSource?`<small class="photo-source" title="${esc(c.imageSource)}">${esc(c.imageSource)}</small>`:''}
     </div>
     <div class="celeb-fields">
-      <input data-field="name" data-i="${i}" value="${esc(c.name)}" placeholder="Celebrity name">
+      <input data-field="name" data-i="${i}" value="${esc(c.name)}" placeholder="Search or enter celebrity">
       <input data-field="image" data-i="${i}" value="${esc(c.image?.startsWith('data:')?'':(c.image||''))}" placeholder="Or paste image URL">
+      <small class="library-state">${c.libraryStatus==='existing'?'Existing celebrity ✓'+(c.image?' · Image reused ✓':' · Image missing'):'New celebrity'}</small>
     </div>
     <input data-field="dob" data-i="${i}" type="date" value="${esc(c.dob)}">
     <span class="age-badge">Age ${ageOn(c.dob,state.event.date)}</span>
@@ -137,21 +140,27 @@ function renderCelebs(r){
   el.querySelectorAll('input[data-field]').forEach(inp=>inp.oninput=e=>{
     const c=r.settings.celebrities[Number(e.target.dataset.i)];
     c[e.target.dataset.field]=e.target.value;
-    if(e.target.dataset.field==='image'&&e.target.value){c.imageSource='Manual URL';c.imageSourceUrl=e.target.value;}
+    if(e.target.dataset.field==='image'&&e.target.value){c.imageKind='external';c.imagePath=null;c.imageSourceKind='manual_url';c.sourceReference=null;c.imageSource='Manual URL';c.imageSourceUrl=e.target.value;}
     if(e.target.dataset.field==='dob')renderCelebs(r);
   });
+  el.querySelectorAll('input[data-field="name"]').forEach(inp=>inp.onblur=()=>resolveCelebrity(r,Number(inp.dataset.i)));
+  el.querySelectorAll('input[data-field="dob"]').forEach(inp=>inp.onchange=()=>resolveCelebrity(r,Number(inp.dataset.i)));
+  el.querySelectorAll('input[data-field="image"]').forEach(inp=>inp.onblur=async()=>{const c=r.settings.celebrities[Number(inp.dataset.i)];if(remoteSession()&&c.dob&&/^https:\/\//.test(c.image||'')){try{await ensureCelebrity(c);await persistCelebrity(c);renderCelebs(r)}catch(e){console.error(e);toast('Could not save that image URL')}}});
   el.querySelectorAll('.remove-celeb').forEach(b=>b.onclick=()=>{r.settings.celebrities.splice(Number(b.dataset.i),1);renderGuessAgeEditor(r)});
   el.querySelectorAll('.move-celeb-up,.move-celeb-down').forEach(b=>b.onclick=async()=>{const i=Number(b.dataset.i),delta=b.classList.contains('move-celeb-up')?-1:1;const remote=remoteGuessRound()?.questions?.[i];if(remote){try{await window.gameNightSupabaseActions.reorderQuestion(remote.id,delta);toast('Lineup reordered')}catch(e){console.error(e);toast('This lineup can no longer be reordered')}}else if(moveItem(r.settings.celebrities,i,delta)){renderCelebs(r);save(false)}});
   el.querySelectorAll('.upload-photo').forEach(b=>b.onclick=()=>el.querySelector(`.photo-file[data-i="${b.dataset.i}"]`).click());
   el.querySelectorAll('.photo-file').forEach(inp=>inp.onchange=async e=>{
     const file=e.target.files?.[0];if(!file)return;
     const i=Number(e.target.dataset.i),c=r.settings.celebrities[i];
-    try{c.image=await resizeImageFile(file);c.imageSource=`Uploaded · ${file.name}`;c.imageSourceUrl='';save(false);renderCelebs(r);toast('Photo added and resized');}
+    try{const dataUrl=await resizeImageFile(file);if(remoteSession()){await ensureCelebrity(c);const blob=await (await fetch(dataUrl)).blob();const path=await window.gameNightSupabaseActions.uploadCelebrityImage(c.id,blob);c.imageKind='storage';c.imagePath=path;c.image=`${storageBase()}/${path}`;c.imageSourceKind='upload';c.imageSource=`Uploaded · ${file.name}`;c.imageSourceUrl='';await persistCelebrity(c)}else{c.image=dataUrl;c.imageSource=`Uploaded · ${file.name}`;c.imageSourceUrl=''}save(false);renderCelebs(r);toast('Photo added and saved for reuse');}
     catch(err){console.error(err);toast('Could not process that image');}
   });
   el.querySelectorAll('.wiki-photo').forEach(b=>b.onclick=()=>findWikipediaPhoto(r,Number(b.dataset.i),b));
-  el.querySelectorAll('.clear-photo').forEach(b=>b.onclick=()=>{const c=r.settings.celebrities[Number(b.dataset.i)];c.image='';c.imageSource='';c.imageSourceUrl='';save(false);renderCelebs(r)});
+  el.querySelectorAll('.clear-photo').forEach(b=>b.onclick=async()=>{const c=r.settings.celebrities[Number(b.dataset.i)];c.image='';c.imageKind='none';c.imagePath=null;c.imageSourceKind=null;c.sourceReference=null;c.imageSource='';c.imageSourceUrl='';if(remoteSession()&&c.id){try{await persistCelebrity(c)}catch(e){console.error(e);toast('Could not clear reusable image')}}save(false);renderCelebs(r)});
 }
+async function persistCelebrity(c){if(!remoteSession())return c;const saved=await window.gameNightSupabaseActions.saveCelebrity(c);applyCelebrityRecord(c,saved,storageBase());return c}
+async function ensureCelebrity(c){if(c.id)return c;if(!c.name||!c.dob)throw new Error('Enter name and DOB first');c.imageKind=c.image?.startsWith('https://')?'external':'none';c.imageSourceKind=c.imageKind==='external'?'manual_url':null;return persistCelebrity(c)}
+async function resolveCelebrity(r,i){if(!remoteSession())return;const c=r.settings.celebrities[i];if((c.name||'').trim().length<3)return;try{const matches=await window.gameNightSupabaseActions.searchCelebrities(c.name);const match=selectCelebrityMatch(matches,c.name,c.dob);if(match){applyCelebrityRecord(c,match,storageBase());renderCelebs(r);if(shouldTryWikipedia(match,c._wikiAttempted))await findWikipediaPhoto(r,i,null,true);return}if(c.dob){await ensureCelebrity(c);renderCelebs(r);if(shouldTryWikipedia({image_kind:c.imageKind,image_path:c.imagePath,external_image_url:c.image,wikipedia_checked_at:c.wikipediaCheckedAt},c._wikiAttempted))await findWikipediaPhoto(r,i,null,true)}}catch(e){console.error(e);toast('Celebrity library lookup failed') }}
 async function resizeImageFile(file){
   const dataUrl=await new Promise((resolve,reject)=>{const fr=new FileReader();fr.onload=()=>resolve(fr.result);fr.onerror=reject;fr.readAsDataURL(file)});
   const img=await new Promise((resolve,reject)=>{const im=new Image();im.onload=()=>resolve(im);im.onerror=reject;im.src=dataUrl});
@@ -160,19 +169,20 @@ async function resizeImageFile(file){
   const ctx=canvas.getContext('2d');ctx.fillStyle='#111318';ctx.fillRect(0,0,w,h);ctx.drawImage(img,0,0,w,h);
   return canvas.toDataURL('image/jpeg',.82);
 }
-async function findWikipediaPhoto(r,i,button){
+async function findWikipediaPhoto(r,i,button,automatic=false){
   const c=r.settings.celebrities[i],name=(c.name||'').trim();if(!name){toast('Enter the celebrity name first');return}
-  const old=button.textContent;button.disabled=true;button.textContent='Searching…';
+  const old=button?.textContent;c._wikiAttempted=true;if(button){button.disabled=true;button.textContent='Searching…'}else{c.libraryStatus='searching';renderCelebs(r)}
   try{
     const url='https://en.wikipedia.org/w/api.php?'+new URLSearchParams({action:'query',generator:'search',gsrsearch:name,gsrlimit:'5',prop:'pageimages',piprop:'thumbnail|original',pithumbsize:'1200',format:'json',origin:'*'});
     const res=await fetch(url);if(!res.ok)throw new Error('Wikipedia request failed');const data=await res.json();
     const pages=Object.values(data?.query?.pages||{}).filter(p=>p.original?.source||p.thumbnail?.source);
-    if(!pages.length){toast('No Wikipedia photo found');return}
+    if(!pages.length){toast('No confident Wikipedia photo found');return}
     const exact=pages.find(p=>p.title.toLowerCase()===name.toLowerCase()),pick=exact||pages.sort((a,b)=>(a.index??99)-(b.index??99))[0];
+    if(automatic&&!exact){toast('Wikipedia match was uncertain — use manual search or upload');return}
     c.image=(pick.original&&pick.original.source)||pick.thumbnail.source;
-    c.imageSource=`Wikipedia · ${pick.title}`;c.imageSourceUrl=`https://en.wikipedia.org/?curid=${pick.pageid}`;save(false);renderCelebs(r);toast(`Added full Wikipedia photo for ${pick.title}`);
+    c.imageKind='external';c.imagePath=null;c.imageSourceKind='wikipedia';c.sourceReference=pick.title;c.imageSource=`Wikipedia · ${pick.title}`;c.imageSourceUrl=`https://en.wikipedia.org/?curid=${pick.pageid}`;if(remoteSession()){await ensureCelebrity(c);await persistCelebrity(c)}save(false);renderCelebs(r);toast(`Added reusable Wikipedia photo for ${pick.title}`);
   }catch(err){console.error(err);toast('Wikipedia lookup failed — upload a photo instead');}
-  finally{button.disabled=false;button.textContent=old;}
+  finally{if(remoteSession()&&c.id){try{await window.gameNightSupabaseActions.markWikipediaChecked(c.id);c.wikipediaCheckedAt=new Date().toISOString()}catch{}}if(button){button.disabled=false;button.textContent=old}if(c.libraryStatus==='searching')c.libraryStatus=c.id?'existing':'new';renderCelebs(r)}
 }
 
 function renderIBetEditor(r){

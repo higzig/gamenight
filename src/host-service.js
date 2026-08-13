@@ -42,11 +42,43 @@ export function saveGuessAgeRound(client, eventId, title, celebrities) {
     p_event_id: eventId,
     p_title: title,
     p_questions: celebrities.map(celebrity => ({
+      celebrity_id: celebrity.id ?? null,
       celebrity_name: celebrity.name,
       date_of_birth: celebrity.dob,
-      external_image_url: celebrity.image?.startsWith('https://') ? celebrity.image : null,
+      image_path: celebrity.imagePath ?? null,
+      external_image_url: celebrity.imageKind === 'external' || (!celebrity.imageKind && celebrity.image?.startsWith('https://')) ? celebrity.image : null,
+      image_source: celebrity.imageSourceKind ?? null,
+      source_reference: celebrity.sourceReference ?? null,
     })),
   })
+}
+
+export function searchCelebrityLibrary(client, query) {
+  return rpc(client, 'search_celebrities', { p_query: query })
+}
+
+export function saveCelebrityRecord(client, celebrity) {
+  return rpc(client, 'save_celebrity', {
+    p_id: celebrity.id ?? null,
+    p_display_name: celebrity.name,
+    p_date_of_birth: celebrity.dob,
+    p_image_kind: celebrity.imageKind ?? 'none',
+    p_image_path: celebrity.imagePath ?? null,
+    p_external_image_url: celebrity.imageKind === 'external' ? celebrity.image : null,
+    p_image_source: celebrity.imageSourceKind ?? null,
+    p_source_reference: celebrity.sourceReference ?? null,
+  })
+}
+
+export async function uploadCelebrityImage(client, celebrityId, blob) {
+  const path = `celebrities/${celebrityId}/${crypto.randomUUID()}.jpg`
+  const { error } = await client.storage.from('celebrity-images').upload(path, blob, { contentType: 'image/jpeg', upsert: false })
+  if (error) throw error
+  return path
+}
+
+export function markWikipediaChecked(client, celebrityId) {
+  return rpc(client, 'mark_celebrity_wikipedia_checked', { p_id: celebrityId })
 }
 
 export function startRemoteQuestion(client, eventId, questionId) {

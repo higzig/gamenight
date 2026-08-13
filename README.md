@@ -14,6 +14,12 @@ Audience lobby QR codes are generated in the browser and point to the current si
 
 `display_mode` is independent of gameplay `status`, so the Host can show the join screen or leaderboard and then return to the current game without corrupting a running question. Restart Round and Start New Session are separate Host-owner RPCs: restart retains Teams and manual corrections; new session preserves the old event and copies only event metadata and the Guess the Age configuration into a new room.
 
+## Phase 2D celebrity library
+
+Celebrity details and media now live in a Host-private reusable library. Guess the Age questions reference a library record while retaining their existing `question_secrets` DOB as an event-question snapshot. That snapshot keeps historical scoring stable if a library DOB is corrected later; newly saved questions take a fresh snapshot from the corrected library record.
+
+The setup editor searches the private library after a deliberate name/DOB interaction. Existing media is reused without another external lookup. Missing media gets one automatic confident-match Wikipedia attempt, with manual search, HTTPS URL, and upload controls still available. Uploaded JPEGs use `celebrities/<celebrity-id>/<generated-file>.jpg` in the existing bucket and the database stores only the object path.
+
 ## Run locally
 1. Open this folder in VS Code.
 2. Right-click `index.html` and choose **Open with Live Server**.
