@@ -1,6 +1,6 @@
 import { moveItem, runConfirmed } from './src/admin-controls.js';
 import { applyCelebrityRecord, createNewCelebrityDraft, dobInputValue, lineupValidationError, selectCelebrityMatch, shouldTryWikipedia, updateCelebrityDob, wikidataDobFromClaims } from './src/celebrity-library.js';
-import { activeIBetYouGroup, adjustBid, iBetYouSecondsRemaining, initialProposedBid, teamName, validateIBetYouChallenge, validateIBetYouCommit } from './src/i-bet-you.js';
+import { activeIBetYouGroup, adjustBid, iBetYouGroups, iBetYouSecondsRemaining, initialProposedBid, teamName, validateIBetYouChallenge, validateIBetYouCommit } from './src/i-bet-you.js';
 const STORE_KEY = 'gameNightAdminV3';
 const LEGACY_KEY = 'gameNightAdminV2';
 const CHANNEL_NAME = 'gameNightLiveV3';
@@ -32,7 +32,7 @@ function defaultState(){return {
   rounds:[
     {id:'r1',type:'guessAge',title:'Guess the Age',settings:{timer:15,points:'bands',celebrities:structuredClone(seedCelebs)}},
     {id:'r2',type:'future',title:'Round 2',settings:{}},
-    {id:'r3',type:'iBetYou',title:'I Bet You',settings:{groups:3,groupSize:4,categories:3,seconds:60,winPoints:5}},
+    {id:'r3',type:'iBetYou',title:'I Bet You',settings:{seconds:60,winPoints:5}},
     {id:'r4',type:'future',title:'Round 4',settings:{}},
     {id:'r5',type:'future',title:'Round 5',settings:{}}
   ],
@@ -91,7 +91,7 @@ function bindEventFields(){
 }
 function roundSummary(r){
   if(r.type==='guessAge') return `${r.settings.celebrities?.length||0} celebrities · ${r.settings.timer||15}s answers`;
-  if(r.type==='iBetYou') return `${r.settings.groups||3} groups · ${r.settings.categories||3} categories · ${r.settings.winPoints||5} points to winner`;
+  if(r.type==='iBetYou'){const count=remoteSession()?.i_bet_you?.groups?.length;return `${count?`${count} persisted group${count===1?'':'s'}`:'Groups scale with joined Teams'} · unique categories · ${r.settings.winPoints||5} points to winner`;}
   return 'Game not chosen yet';
 }
 function renderRounds(){
@@ -188,8 +188,8 @@ async function findWikipediaPhoto(r,i,button,automatic=false){
 }
 
 function renderIBetEditor(r){
-  const s=r.settings;$('#drawerBody').innerHTML=`<div class="settings-grid"><label class="field">Round title<input id="roundTitleInput" value="${esc(r.title)}"></label><label class="field">Groups<input id="groups" type="number" min="1" max="10" value="${s.groups||3}" disabled></label><label class="field">Teams per group<input id="groupSize" type="number" min="2" max="8" value="${s.groupSize||4}" disabled></label><label class="field">Categories<input id="categories" type="number" min="1" max="10" value="${s.categories||3}" disabled></label><label class="field">Challenge timer<input id="seconds" type="number" value="60" disabled></label><label class="field">Winner points<input id="winPoints" type="number" value="5" disabled></label></div><div class="empty-state"><strong>I Bet You is ready for hosted events.</strong><p class="hint">Open Live Control and choose “Prepare I Bet You” to create balanced persisted groups and category assignments from joined Teams.</p></div>`;
-  $('#roundTitleInput').oninput=e=>r.title=e.target.value;['groups','groupSize','categories','seconds','winPoints'].forEach(id=>$('#'+id).oninput=e=>s[id]=Number(e.target.value));
+  const s=r.settings;$('#drawerBody').innerHTML=`<div class="settings-grid"><label class="field">Round title<input id="roundTitleInput" value="${esc(r.title)}"></label><label class="field">Grouping<input value="Automatic from joined Teams" disabled></label><label class="field">Categories<input value="One unique category per group" disabled></label><label class="field">Challenge timer<input id="seconds" type="number" value="60" disabled></label><label class="field">Winner points<input id="winPoints" type="number" value="5" disabled></label></div><div class="empty-state"><strong>I Bet You is ready for hosted events.</strong><p class="hint">Open Live Control and choose “Prepare I Bet You” to create participation-aware persisted groups and category assignments from joined Teams.</p></div>`;
+  $('#roundTitleInput').oninput=e=>r.title=e.target.value;['seconds','winPoints'].forEach(id=>$('#'+id).oninput=e=>s[id]=Number(e.target.value));
 }
 function renderTeams(){
   const joined=remoteTeams();
@@ -267,7 +267,7 @@ function renderRemoteLiveControl(){
   if(status==='question'){clearInterval(liveTicker);liveTicker=setInterval(()=>{if(remoteTimeLeft()<=0){clearInterval(liveTicker);renderRemoteLiveControl()}else renderRemoteLiveControl()},250)}
 }
 function renderRemoteIBetControl(){
-  const s=remoteSession(),game=s.i_bet_you,event=s.event,group=activeIBetYouGroup(s),groups=game.groups||[],allMembers=groups.flatMap(g=>g.members.map(m=>({...m,groupId:g.id,groupPosition:g.position}))),left=iBetYouSecondsRemaining(s);
+  const s=remoteSession(),game=s.i_bet_you,event=s.event,group=activeIBetYouGroup(s),groups=iBetYouGroups(s),allMembers=groups.flatMap(g=>g.members.map(m=>({...m,groupId:g.id,groupPosition:g.position}))),left=iBetYouSecondsRemaining(s);
   const groupCards=groups.map(g=>`<div class="ibet-group-card ${g.id===group?.id?'active':''}"><div><p class="eyebrow">GROUP ${g.position}</p><h3>${esc(g.category.title)}</h3><p>${g.members.map(m=>esc(m.name)).join(' · ')}</p></div>${g.state==='waiting'?`<button class="mini-btn change-ibet-category" data-id="${g.id}">Change Category</button>`:`<span class="pill ready">${esc(g.state)}</span>`}</div>`).join('');
   if(!group){const guess=remoteGuessRound();$('#liveControl').innerHTML=`<div class="panel empty-state"><strong>I Bet You complete.</strong><p class="hint">Show the overall leaderboard or return to another hosted round.</p><button class="btn primary" id="ibetLeaderboard">Show Leaderboard</button>${guess?'<button class="btn secondary" id="returnGuess">Return to Guess the Age</button>':''}</div>`;$('#ibetLeaderboard').onclick=()=>window.gameNightSupabaseActions.setDisplay('leaderboard');if($('#returnGuess'))$('#returnGuess').onclick=()=>window.gameNightSupabaseActions.activateRound(guess.id);return}
   const memberOptions=group.members.map(m=>`<option value="${m.team_id}">${esc(m.name)}</option>`).join(''),bidder=group.challenged_bidder_team_id||group.current_bidder_team_id||group.members[0]?.team_id,challenger=group.challenger_team_id||group.members.find(m=>m.team_id!==bidder)?.team_id,bid=group.target_bid||group.current_bid||1,commitKey=`${group.current_bidder_team_id||''}:${group.current_bid??''}`;
@@ -298,7 +298,7 @@ function nextQuestion(){const r=currentRound();if(!r)return;if(state.live.questi
 function openModal(){renderGamePicker();$('#roundModal').classList.add('open');$('#modalBackdrop').classList.add('open')}
 function closeModal(){$('#roundModal').classList.remove('open');$('#modalBackdrop').classList.remove('open')}
 function renderGamePicker(){$('#gamePicker').innerHTML=Object.entries(games).map(([key,g])=>`<button class="game-option" data-game="${key}"><strong>${g.icon} ${g.name}</strong><span>${g.desc}</span></button>`).join('');document.querySelectorAll('.game-option').forEach(b=>b.onclick=()=>addRound(b.dataset.game))}
-function addRound(type){const id='r'+Date.now();const base={id,type,title:games[type].name,settings:{}};if(type==='guessAge')base.settings={timer:15,points:'bands',celebrities:[]};if(type==='iBetYou')base.settings={groups:3,groupSize:4,categories:3,seconds:60,winPoints:5};state.rounds.push(base);closeModal();renderRounds();save(false);openDrawer(id)}
+function addRound(type){const id='r'+Date.now();const base={id,type,title:games[type].name,settings:{}};if(type==='guessAge')base.settings={timer:15,points:'bands',celebrities:[]};if(type==='iBetYou')base.settings={seconds:60,winPoints:5};state.rounds.push(base);closeModal();renderRounds();save(false);openDrawer(id)}
 function deleteRound(){if(!editingRoundId)return;state.rounds=state.rounds.filter(r=>r.id!==editingRoundId);if(state.live.activeRoundId===editingRoundId)state.live.activeRoundId=state.rounds.find(r=>r.type==='guessAge')?.id||null;closeDrawer()}
 function initNav(){document.querySelectorAll('.nav-item').forEach(b=>b.onclick=()=>{document.querySelectorAll('.nav-item').forEach(x=>x.classList.toggle('active',x===b));document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));$('#view-'+b.dataset.view).classList.add('active');if(b.dataset.view==='live')renderLiveControl()})}
 function init(){

@@ -1,5 +1,5 @@
 import { describe,expect,it } from 'vitest'
-import { activeIBetYouGroup,adjustBid,groupForTeam,iBetYouAudienceModel,iBetYouHostActions,iBetYouSecondsRemaining,iBetYouTeamModel,initialProposedBid,teamName,validateIBetYouChallenge,validateIBetYouCommit } from './i-bet-you.js'
+import { activeIBetYouGroup,adjustBid,groupForTeam,iBetYouAudienceModel,iBetYouGroups,iBetYouHostActions,iBetYouSecondsRemaining,iBetYouTeamModel,initialProposedBid,teamName,validateIBetYouChallenge,validateIBetYouCommit } from './i-bet-you.js'
 
 const members=[{team_id:'t1',name:'Team A',position:1},{team_id:'t2',name:'Team B',position:2},{team_id:'t3',name:'Team C',position:3}]
 const baseGroup={id:'g1',position:1,state:'waiting',category:{id:'c1',title:'Harry Potter Spells',difficulty:'medium'},members,current_bidder_team_id:null,current_bid:null,challenged_bidder_team_id:null,challenger_team_id:null,target_bid:null,result:null,winning_team_id:null}
@@ -8,6 +8,7 @@ const makeState=(group=baseGroup)=>({server_now:'2026-08-14T12:00:00Z',_hydrated
 describe('I Bet You hosted UI model',()=>{
   it('restores the authoritative active group after hydration',()=>expect(activeIBetYouGroup(makeState()).id).toBe('g1'))
   it('renders persisted group assignments',()=>expect(iBetYouAudienceModel(makeState()).members.map(x=>x.name)).toEqual(['Team A','Team B','Team C']))
+  it('exposes the actual persisted group count for variable Admin rendering',()=>{expect(iBetYouGroups(makeState()).length).toBe(2);const four=makeState();four.i_bet_you.groups=[baseGroup,{...baseGroup,id:'g2'},{...baseGroup,id:'g3'},{...baseGroup,id:'g4'}];expect(iBetYouGroups(four).length).toBe(4)})
   it('renders the assigned category',()=>expect(iBetYouAudienceModel(makeState()).category).toBe('Harry Potter Spells'))
   it('increments and decrements bids with safe bounds',()=>{expect(adjustBid(5,1)).toBe(6);expect(adjustBid(5,-1)).toBe(4);expect(adjustBid(1,-1)).toBe(1)})
   it('starts an opening bid at one and a raised bid above the committed bid',()=>{expect(initialProposedBid(baseGroup)).toBe(1);expect(initialProposedBid({...baseGroup,current_bid:7})).toBe(8)})

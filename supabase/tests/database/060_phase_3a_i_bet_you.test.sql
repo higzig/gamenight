@@ -14,7 +14,7 @@ select ('df000000-0000-0000-0000-'||lpad(n::text,12,'0'))::uuid,'af000000-0000-0
 
 set local role authenticated;
 select set_config('request.jwt.claims','{"sub":"16000000-0000-0000-0000-000000000001","role":"authenticated","is_anonymous":false}',true);
-select lives_ok($$select public.setup_i_bet_you_round('af000000-0000-0000-0000-000000000001',3)$$,'Host sets up I Bet You');
+select lives_ok($$select public.setup_i_bet_you_round('af000000-0000-0000-0000-000000000001')$$,'Host sets up I Bet You');
 select throws_ok($$select * from public.i_bet_you_group_members$$,'42501','permission denied for table i_bet_you_group_members','application role cannot directly read assignments');
 reset role;
 insert into public.event_rounds(id,event_id,position,game_type,title) values('bf000000-0000-0000-0000-000000000001','af000000-0000-0000-0000-000000000001',2,'guess_age','Guess the Age');
@@ -37,7 +37,7 @@ select set_config('test.challenger',(select team_id::text from public.i_bet_you_
 select set_config('test.assignment',(select string_agg(group_id::text||team_id::text,',' order by team_id) from public.i_bet_you_group_members),true);
 set local role authenticated;
 select set_config('request.jwt.claims','{"sub":"26000000-0000-0000-0000-000000000001","role":"authenticated","is_anonymous":true}',true);
-select throws_ok($$select public.setup_i_bet_you_round('af000000-0000-0000-0000-000000000001',3)$$,'42501','event owner required','Team cannot alter grouping');
+select throws_ok($$select public.setup_i_bet_you_round('af000000-0000-0000-0000-000000000001')$$,'42501','event owner required','Team cannot alter grouping');
 select throws_ok($$select public.set_i_bet_you_bid(current_setting('test.group1')::uuid,current_setting('test.bidder')::uuid,7)$$,'42501','event owner required','Audience cannot mutate bids');
 select ok(public.get_team_room_state('IBET10')->'i_bet_you' is not null,'Team hydration includes passive I Bet You state');
 
@@ -61,7 +61,7 @@ select is((select current_bidder_team_id::text||':'||current_bid from public.i_b
 set local role authenticated;
 select set_config('request.jwt.claims','{"sub":"16000000-0000-0000-0000-000000000001","role":"authenticated","is_anonymous":false}',true);
 select throws_ok($$select public.challenge_i_bet_you(current_setting('test.group1')::uuid,current_setting('test.raiser')::uuid)$$,'valid challenger required','latest bidder cannot challenge its own bid');
-select throws_ok($$select public.setup_i_bet_you_round('af000000-0000-0000-0000-000000000001',3)$$,'grouping is locked after gameplay begins','grouping cannot regenerate after play begins');
+select throws_ok($$select public.setup_i_bet_you_round('af000000-0000-0000-0000-000000000001')$$,'grouping is locked after gameplay begins','grouping cannot regenerate after play begins');
 select lives_ok($$select public.challenge_i_bet_you(current_setting('test.group1')::uuid,current_setting('test.challenger')::uuid)$$,'Host records Name Them');
 reset role;
 select is((select target_bid from public.i_bet_you_groups where id=current_setting('test.group1')::uuid),9,'challenge freezes the latest committed target');

@@ -22,7 +22,7 @@ The setup editor searches the private library after a deliberate name/DOB intera
 
 ## Phase 3A I Bet You
 
-Hosted events can now prepare and run an authoritative I Bet You round from Live Control. Joined Teams are randomly balanced into three persisted groups, each receives a unique seeded category, and all bid/challenge/timer/judgment actions use Host-owner RPCs. The 60-second timer derives from server timestamps; SUCCESS awards the bidder +5 and FAIL awards the challenger +5 through the shared score ledger. Audience hydration drives the stage display, while Team phones remain passive.
+Hosted events can now prepare and run an authoritative I Bet You round from Live Control. Joined Teams are randomly distributed into a participation-aware number of persisted groups, each receives a unique seeded category, and all bid/challenge/timer/judgment actions use Host-owner RPCs. The 60-second timer derives from server timestamps; SUCCESS awards the bidder +5 and FAIL awards the challenger +5 through the shared score ledger. Audience hydration drives the stage display, while Team phones remain passive.
 
 ## Run locally
 1. Open this folder in VS Code.

@@ -1,6 +1,10 @@
 export function activeIBetYouGroup(state) {
   const game = state?.i_bet_you
-  return game?.groups?.find(group => group.id === game.round?.active_group_id) ?? null
+  return iBetYouGroups(state).find(group => group.id === game?.round?.active_group_id) ?? null
+}
+
+export function iBetYouGroups(state) {
+  return state?.i_bet_you?.groups ?? []
 }
 
 export function teamName(group, teamId) {

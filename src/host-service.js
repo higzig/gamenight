@@ -118,7 +118,7 @@ export function reorderGuessAgeQuestion(client, eventId, questionId, direction) 
   return rpc(client, 'reorder_guess_age_question', { p_event_id: eventId, p_question_id: questionId, p_direction: direction })
 }
 
-export const setupIBetYouRound = (client,eventId) => rpc(client,'setup_i_bet_you_round',{p_event_id:eventId,p_group_count:3})
+export const setupIBetYouRound = (client,eventId) => rpc(client,'setup_i_bet_you_round',{p_event_id:eventId})
 export const swapIBetYouTeams = (client,eventId,teamA,teamB) => rpc(client,'swap_i_bet_you_teams',{p_event_id:eventId,p_team_a:teamA,p_team_b:teamB})
 export const changeIBetYouCategory = (client,groupId) => rpc(client,'change_i_bet_you_category',{p_group_id:groupId})
 export const setIBetYouBid = (client,groupId,bidderId,bid) => rpc(client,'set_i_bet_you_bid',{p_group_id:groupId,p_bidder_team_id:bidderId,p_bid:bid})
