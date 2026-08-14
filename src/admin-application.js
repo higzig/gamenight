@@ -111,6 +111,17 @@ export function createAdminApplication({
       saveCelebrity: celebrity => services.saveCelebrityRecord(client, celebrity),
       uploadCelebrityImage: (celebrityId, blob) => services.uploadCelebrityImage(client, celebrityId, blob),
       markWikipediaChecked: celebrityId => services.markWikipediaChecked(client, celebrityId),
+      setupIBetYou: () => services.setupIBetYouRound(client,eventId).then(refreshActiveEvent),
+      swapIBetYouTeams: (teamA,teamB) => services.swapIBetYouTeams(client,eventId,teamA,teamB).then(refreshActiveEvent),
+      changeIBetYouCategory: groupId => services.changeIBetYouCategory(client,groupId).then(refreshActiveEvent),
+      setIBetYouBid: (groupId,bidderId,bid) => services.setIBetYouBid(client,groupId,bidderId,bid).then(refreshActiveEvent),
+      challengeIBetYou: (groupId,challengerId) => services.challengeIBetYou(client,groupId,challengerId).then(refreshActiveEvent),
+      correctIBetYou: (groupId,bidderId,challengerId,target) => services.correctIBetYouShowdown(client,groupId,bidderId,challengerId,target).then(refreshActiveEvent),
+      startIBetYouTimer: groupId => services.startIBetYouTimer(client,groupId).then(refreshActiveEvent),
+      judgeIBetYou: (groupId,success) => services.judgeIBetYouGroup(client,groupId,success).then(refreshActiveEvent),
+      nextIBetYou: groupId => services.nextIBetYouGroup(client,groupId).then(refreshActiveEvent),
+      resetIBetYou: groupId => services.resetIBetYouGroup(client,groupId).then(refreshActiveEvent),
+      activateRound: roundId => services.activateHostedRound(client,eventId,roundId).then(refreshActiveEvent),
       startNewSession: async () => {
         const newId = await services.copyEventSession(client, eventId)
         await openEvent(newId)

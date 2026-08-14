@@ -20,6 +20,10 @@ Celebrity details and media now live in a Host-private reusable library. Guess t
 
 The setup editor searches the private library after a deliberate name/DOB interaction. Existing media is reused without another external lookup. Missing media gets one automatic confident-match Wikipedia attempt, with manual search, HTTPS URL, and upload controls still available. Uploaded JPEGs use `celebrities/<celebrity-id>/<generated-file>.jpg` in the existing bucket and the database stores only the object path.
 
+## Phase 3A I Bet You
+
+Hosted events can now prepare and run an authoritative I Bet You round from Live Control. Joined Teams are randomly balanced into three persisted groups, each receives a unique seeded category, and all bid/challenge/timer/judgment actions use Host-owner RPCs. The 60-second timer derives from server timestamps; SUCCESS awards the bidder +5 and FAIL awards the challenger +5 through the shared score ledger. Audience hydration drives the stage display, while Team phones remain passive.
+
 ## Run locally
 1. Open this folder in VS Code.
 2. Right-click `index.html` and choose **Open with Live Server**.

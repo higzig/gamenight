@@ -1,5 +1,5 @@
 import { createGameNightClient, getSupabaseConfigError } from './supabase-client.js'
-import { advanceRemoteQuestion, copyEventSession, createJoinableEvent, deleteOwnedEvent, hydrateHostEvent, isAnonymousUser, listOwnedEvents, lockRemoteQuestion, markWikipediaChecked, reorderGuessAgeQuestion, restartGuessAgeRound, revealRemoteQuestion, saveCelebrityRecord, saveGuessAgeRound, searchCelebrityLibrary, setRemoteDisplay, startRemoteQuestion, uploadCelebrityImage } from './host-service.js'
+import { activateHostedRound, advanceRemoteQuestion, changeIBetYouCategory, challengeIBetYou, copyEventSession, correctIBetYouShowdown, createJoinableEvent, deleteOwnedEvent, hydrateHostEvent, isAnonymousUser, judgeIBetYouGroup, listOwnedEvents, lockRemoteQuestion, markWikipediaChecked, nextIBetYouGroup, reorderGuessAgeQuestion, resetIBetYouGroup, restartGuessAgeRound, revealRemoteQuestion, saveCelebrityRecord, saveGuessAgeRound, searchCelebrityLibrary, setIBetYouBid, setRemoteDisplay, setupIBetYouRound, startIBetYouTimer, startRemoteQuestion, swapIBetYouTeams, uploadCelebrityImage } from './host-service.js'
 import { createAdminApplication } from './admin-application.js'
 
 const supabase = createGameNightClient('game-night-host-auth')
@@ -7,7 +7,7 @@ const supabase = createGameNightClient('game-night-host-auth')
 const application = createAdminApplication({
   client: supabase,
   configError: getSupabaseConfigError(),
-  services: { advanceRemoteQuestion, copyEventSession, createJoinableEvent, deleteOwnedEvent, hydrateHostEvent, isAnonymousUser, listOwnedEvents, lockRemoteQuestion, markWikipediaChecked, reorderGuessAgeQuestion, restartGuessAgeRound, revealRemoteQuestion, saveCelebrityRecord, saveGuessAgeRound, searchCelebrityLibrary, setRemoteDisplay, startRemoteQuestion, uploadCelebrityImage },
+  services: { activateHostedRound, advanceRemoteQuestion, changeIBetYouCategory, challengeIBetYou, copyEventSession, correctIBetYouShowdown, createJoinableEvent, deleteOwnedEvent, hydrateHostEvent, isAnonymousUser, judgeIBetYouGroup, listOwnedEvents, lockRemoteQuestion, markWikipediaChecked, nextIBetYouGroup, reorderGuessAgeQuestion, resetIBetYouGroup, restartGuessAgeRound, revealRemoteQuestion, saveCelebrityRecord, saveGuessAgeRound, searchCelebrityLibrary, setIBetYouBid, setRemoteDisplay, setupIBetYouRound, startIBetYouTimer, startRemoteQuestion, swapIBetYouTeams, uploadCelebrityImage },
   loadLegacyAdmin: () => import('../admin.js'),
 })
 

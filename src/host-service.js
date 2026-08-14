@@ -117,3 +117,15 @@ export async function copyEventSession(client, eventId) {
 export function reorderGuessAgeQuestion(client, eventId, questionId, direction) {
   return rpc(client, 'reorder_guess_age_question', { p_event_id: eventId, p_question_id: questionId, p_direction: direction })
 }
+
+export const setupIBetYouRound = (client,eventId) => rpc(client,'setup_i_bet_you_round',{p_event_id:eventId,p_group_count:3})
+export const swapIBetYouTeams = (client,eventId,teamA,teamB) => rpc(client,'swap_i_bet_you_teams',{p_event_id:eventId,p_team_a:teamA,p_team_b:teamB})
+export const changeIBetYouCategory = (client,groupId) => rpc(client,'change_i_bet_you_category',{p_group_id:groupId})
+export const setIBetYouBid = (client,groupId,bidderId,bid) => rpc(client,'set_i_bet_you_bid',{p_group_id:groupId,p_bidder_team_id:bidderId,p_bid:bid})
+export const challengeIBetYou = (client,groupId,challengerId) => rpc(client,'challenge_i_bet_you',{p_group_id:groupId,p_challenger_team_id:challengerId})
+export const correctIBetYouShowdown = (client,groupId,bidderId,challengerId,target) => rpc(client,'correct_i_bet_you_showdown',{p_group_id:groupId,p_bidder_team_id:bidderId,p_challenger_team_id:challengerId,p_target:target})
+export const startIBetYouTimer = (client,groupId) => rpc(client,'start_i_bet_you_timer',{p_group_id:groupId})
+export const judgeIBetYouGroup = (client,groupId,success) => rpc(client,'judge_i_bet_you_group',{p_group_id:groupId,p_success:success})
+export const nextIBetYouGroup = (client,groupId) => rpc(client,'next_i_bet_you_group',{p_group_id:groupId})
+export const resetIBetYouGroup = (client,groupId) => rpc(client,'reset_i_bet_you_group',{p_group_id:groupId})
+export const activateHostedRound = (client,eventId,roundId) => rpc(client,'activate_hosted_round',{p_event_id:eventId,p_round_id:roundId})

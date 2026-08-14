@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { createJoinableEvent, deleteOwnedEvent, isAnonymousUser, saveGuessAgeRound, uploadCelebrityImage } from './host-service.js'
+import { challengeIBetYou, createJoinableEvent, deleteOwnedEvent, isAnonymousUser, judgeIBetYouGroup, saveGuessAgeRound, setIBetYouBid, setupIBetYouRound, startIBetYouTimer, uploadCelebrityImage } from './host-service.js'
 
 describe('Host service', () => {
   it('recognizes anonymous Auth users', () => {
@@ -27,4 +27,5 @@ describe('Host service', () => {
     expect(from).toHaveBeenCalledWith('celebrity-images');expect(path).toMatch(/^celebrities\/celebrity-id\/.+\.jpg$/)
   })
   it('deletes an event only through the owner RPC',async()=>{const rpc=vi.fn().mockResolvedValue({data:null,error:null});await deleteOwnedEvent({rpc},'event-id');expect(rpc).toHaveBeenCalledWith('delete_event',{p_event_id:'event-id'})})
+  it('routes I Bet You mutations through constrained RPCs',async()=>{const rpc=vi.fn().mockResolvedValue({data:{},error:null}),client={rpc};await setupIBetYouRound(client,'e1');await setIBetYouBid(client,'g1','t1',7);await challengeIBetYou(client,'g1','t2');await startIBetYouTimer(client,'g1');await judgeIBetYouGroup(client,'g1',true);expect(rpc.mock.calls.map(x=>x[0])).toEqual(['setup_i_bet_you_round','set_i_bet_you_bid','challenge_i_bet_you','start_i_bet_you_timer','judge_i_bet_you_group'])})
 })
