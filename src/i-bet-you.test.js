@@ -1,5 +1,5 @@
 import { describe,expect,it } from 'vitest'
-import { activeIBetYouGroup,adjustBid,groupForTeam,iBetYouAudienceModel,iBetYouHostActions,iBetYouSecondsRemaining,iBetYouTeamModel,teamName } from './i-bet-you.js'
+import { activeIBetYouGroup,adjustBid,groupForTeam,iBetYouAudienceModel,iBetYouHostActions,iBetYouSecondsRemaining,iBetYouTeamModel,initialProposedBid,teamName,validateIBetYouChallenge,validateIBetYouCommit } from './i-bet-you.js'
 
 const members=[{team_id:'t1',name:'Team A',position:1},{team_id:'t2',name:'Team B',position:2},{team_id:'t3',name:'Team C',position:3}]
 const baseGroup={id:'g1',position:1,state:'waiting',category:{id:'c1',title:'Harry Potter Spells',difficulty:'medium'},members,current_bidder_team_id:null,current_bid:null,challenged_bidder_team_id:null,challenger_team_id:null,target_bid:null,result:null,winning_team_id:null}
@@ -10,9 +10,13 @@ describe('I Bet You hosted UI model',()=>{
   it('renders persisted group assignments',()=>expect(iBetYouAudienceModel(makeState()).members.map(x=>x.name)).toEqual(['Team A','Team B','Team C']))
   it('renders the assigned category',()=>expect(iBetYouAudienceModel(makeState()).category).toBe('Harry Potter Spells'))
   it('increments and decrements bids with safe bounds',()=>{expect(adjustBid(5,1)).toBe(6);expect(adjustBid(5,-1)).toBe(4);expect(adjustBid(1,-1)).toBe(1)})
+  it('starts an opening bid at one and a raised bid above the committed bid',()=>{expect(initialProposedBid(baseGroup)).toBe(1);expect(initialProposedBid({...baseGroup,current_bid:7})).toBe(8)})
+  it('requires a Team and a strictly higher committed bid',()=>{expect(validateIBetYouCommit(baseGroup,null,1)).toMatch(/Select/);expect(validateIBetYouCommit(baseGroup,'t1',1)).toBe('');expect(validateIBetYouCommit({...baseGroup,current_bid:7},'t2',7)).toMatch(/higher/);expect(validateIBetYouCommit({...baseGroup,current_bid:7},'t2',8)).toBe('')})
+  it('disables Name Them before a bid and prevents self-challenge',()=>{expect(validateIBetYouChallenge(baseGroup,'t2')).toMatch(/Commit/);expect(validateIBetYouChallenge({...baseGroup,current_bidder_team_id:'t2',current_bid:7},'t2')).toMatch(/own bid/);expect(validateIBetYouChallenge({...baseGroup,current_bidder_team_id:'t2',current_bid:7},'t3')).toBe('')})
   it('resolves a selected bidder without typed Team names',()=>expect(teamName(baseGroup,'t2')).toBe('Team B'))
   it('models Name Them with frozen bidder and target',()=>{const state=makeState({...baseGroup,state:'challenged',challenged_bidder_team_id:'t2',challenger_team_id:'t3',target_bid:7});expect(iBetYouAudienceModel(state)).toMatchObject({phase:'challenged',bidder:'Team B',challenger:'Team C',bid:7})})
   it('offers correction and start controls before countdown',()=>expect(iBetYouHostActions({...baseGroup,state:'challenged'})).toEqual(['correct-showdown','start-60s']))
+  it('makes explicit bid commit part of the normal Host loop',()=>expect(iBetYouHostActions(baseGroup)).toEqual(['select-team','decrement','increment','commit-bid','name-them']))
   it('derives the 60-second countdown from server timestamps',()=>{const state=makeState({...baseGroup,state:'countdown',countdown_deadline_at:'2026-08-14T12:01:00Z'});expect(iBetYouSecondsRemaining(state,11000)).toBe(50)})
   it('does not decide a result when countdown expires',()=>{const state=makeState({...baseGroup,state:'countdown',countdown_deadline_at:'2026-08-14T12:00:01Z'});expect(iBetYouAudienceModel(state,5000)).toMatchObject({phase:'countdown',seconds:0,result:null})})
   it('keeps large Host judgment actions available during countdown',()=>expect(iBetYouHostActions({...baseGroup,state:'countdown'})).toEqual(['success','fail']))
@@ -22,4 +26,5 @@ describe('I Bet You hosted UI model',()=>{
   it('finds passive Team-phone group membership',()=>expect(groupForTeam(makeState(),'t1').id).toBe('g1'))
   it('renders Team phones as passive group/category state',()=>expect(iBetYouTeamModel(makeState(),'t1')).toMatchObject({groupNumber:1,category:'Harry Potter Spells',active:true}))
   it('preserves the same bidder and bid after reconnect hydration',()=>{const snapshot=makeState({...baseGroup,state:'bidding',current_bidder_team_id:'t2',current_bid:9});expect(iBetYouAudienceModel(structuredClone(snapshot))).toMatchObject({phase:'bidding',bidder:'Team B',bid:9})})
+  it('updates the Audience model after every committed bid hydration',()=>{const first=iBetYouAudienceModel(makeState({...baseGroup,state:'bidding',current_bidder_team_id:'t1',current_bid:5}));const raised=iBetYouAudienceModel(makeState({...baseGroup,state:'bidding',current_bidder_team_id:'t2',current_bid:7}));expect(first).toMatchObject({bidder:'Team A',bid:5});expect(raised).toMatchObject({bidder:'Team B',bid:7})})
 })

@@ -1,6 +1,6 @@
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(43);
+select plan(49);
 
 insert into auth.users(instance_id,id,aud,role,email,encrypted_password,email_confirmed_at,raw_app_meta_data,raw_user_meta_data,created_at,updated_at) values
 ('00000000-0000-0000-0000-000000000000','16000000-0000-0000-0000-000000000001','authenticated','authenticated','ibet-owner@test.local','',now(),'{}','{}',now(),now()),
@@ -32,7 +32,8 @@ select lives_ok($$select public.swap_i_bet_you_teams('af000000-0000-0000-0000-00
 reset role;
 select is((select group_id::text from public.i_bet_you_group_members where team_id=current_setting('test.swap_a')::uuid),current_setting('test.group2'),'swap persists authoritatively');
 select set_config('test.bidder',(select team_id::text from public.i_bet_you_group_members where group_id=current_setting('test.group1')::uuid order by position limit 1),true);
-select set_config('test.challenger',(select team_id::text from public.i_bet_you_group_members where group_id=current_setting('test.group1')::uuid order by position offset 1 limit 1),true);
+select set_config('test.raiser',(select team_id::text from public.i_bet_you_group_members where group_id=current_setting('test.group1')::uuid order by position offset 1 limit 1),true);
+select set_config('test.challenger',(select team_id::text from public.i_bet_you_group_members where group_id=current_setting('test.group1')::uuid order by position offset 2 limit 1),true);
 select set_config('test.assignment',(select string_agg(group_id::text||team_id::text,',' order by team_id) from public.i_bet_you_group_members),true);
 set local role authenticated;
 select set_config('request.jwt.claims','{"sub":"26000000-0000-0000-0000-000000000001","role":"authenticated","is_anonymous":true}',true);
@@ -48,11 +49,23 @@ select is((select string_agg(group_id::text||team_id::text,',' order by team_id)
 set local role authenticated;
 select set_config('request.jwt.claims','{"sub":"16000000-0000-0000-0000-000000000001","role":"authenticated","is_anonymous":false}',true);
 select lives_ok($$select public.set_i_bet_you_bid(current_setting('test.group1')::uuid,current_setting('test.bidder')::uuid,7)$$,'Host records bid');
+reset role;
+select is((select current_bidder_team_id::text||':'||current_bid from public.i_bet_you_groups where id=current_setting('test.group1')::uuid),current_setting('test.bidder')||':7','opening I BET YOU persists bidder and bid');
+set local role authenticated;
+select set_config('request.jwt.claims','{"sub":"16000000-0000-0000-0000-000000000001","role":"authenticated","is_anonymous":false}',true);
+select throws_ok($$select public.set_i_bet_you_bid(current_setting('test.group1')::uuid,current_setting('test.raiser')::uuid,7)$$,'new bid must be higher than current bid','equal bid is rejected');
+select throws_ok($$select public.set_i_bet_you_bid(current_setting('test.group1')::uuid,current_setting('test.raiser')::uuid,6)$$,'new bid must be higher than current bid','lower bid is rejected');
+select lives_ok($$select public.set_i_bet_you_bid(current_setting('test.group1')::uuid,current_setting('test.raiser')::uuid,9)$$,'second Team commits a raised I BET YOU bid');
+reset role;
+select is((select current_bidder_team_id::text||':'||current_bid from public.i_bet_you_groups where id=current_setting('test.group1')::uuid),current_setting('test.raiser')||':9','latest committed bidder and bid replace the prior committed bid');
+set local role authenticated;
+select set_config('request.jwt.claims','{"sub":"16000000-0000-0000-0000-000000000001","role":"authenticated","is_anonymous":false}',true);
+select throws_ok($$select public.challenge_i_bet_you(current_setting('test.group1')::uuid,current_setting('test.raiser')::uuid)$$,'valid challenger required','latest bidder cannot challenge its own bid');
 select throws_ok($$select public.setup_i_bet_you_round('af000000-0000-0000-0000-000000000001',3)$$,'grouping is locked after gameplay begins','grouping cannot regenerate after play begins');
 select lives_ok($$select public.challenge_i_bet_you(current_setting('test.group1')::uuid,current_setting('test.challenger')::uuid)$$,'Host records Name Them');
 reset role;
-select is((select target_bid from public.i_bet_you_groups where id=current_setting('test.group1')::uuid),7,'challenge freezes target');
-select is((select challenged_bidder_team_id::text||':'||challenger_team_id::text from public.i_bet_you_groups where id=current_setting('test.group1')::uuid),current_setting('test.bidder')||':'||current_setting('test.challenger'),'challenge freezes bidder and challenger');
+select is((select target_bid from public.i_bet_you_groups where id=current_setting('test.group1')::uuid),9,'challenge freezes the latest committed target');
+select is((select challenged_bidder_team_id::text||':'||challenger_team_id::text from public.i_bet_you_groups where id=current_setting('test.group1')::uuid),current_setting('test.raiser')||':'||current_setting('test.challenger'),'challenge infers the latest bidder and selected challenger');
 set local role authenticated;
 select set_config('request.jwt.claims','{"sub":"16000000-0000-0000-0000-000000000001","role":"authenticated","is_anonymous":false}',true);
 select lives_ok($$select public.correct_i_bet_you_showdown(current_setting('test.group1')::uuid,current_setting('test.bidder')::uuid,current_setting('test.challenger')::uuid,8)$$,'Host corrects showdown before timer');

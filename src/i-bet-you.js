@@ -11,6 +11,24 @@ export function adjustBid(value, delta) {
   return Math.min(100, Math.max(1, (Number(value) || 1) + delta))
 }
 
+export function initialProposedBid(group) {
+  return group?.current_bid == null ? 1 : adjustBid(group.current_bid, 1)
+}
+
+export function validateIBetYouCommit(group, selectedTeamId, proposedBid) {
+  if (!selectedTeamId) return 'Select the Team making the bid.'
+  if (!Number.isInteger(proposedBid) || proposedBid < 1 || proposedBid > 100) return 'Enter a bid between 1 and 100.'
+  if (group?.current_bid != null && proposedBid <= group.current_bid) return `The next bid must be higher than ${group.current_bid}.`
+  return ''
+}
+
+export function validateIBetYouChallenge(group, selectedTeamId) {
+  if (group?.current_bid == null || !group?.current_bidder_team_id) return 'Commit a bid before using Name Them.'
+  if (!selectedTeamId) return 'Select the Team saying Name Them.'
+  if (selectedTeamId === group.current_bidder_team_id) return 'A Team cannot challenge its own bid.'
+  return ''
+}
+
 export function iBetYouSecondsRemaining(state, now = Date.now()) {
   const group = activeIBetYouGroup(state)
   const deadline = Date.parse(group?.countdown_deadline_at ?? '')
@@ -43,7 +61,7 @@ export function iBetYouAudienceModel(state, now = Date.now()) {
 
 export function iBetYouHostActions(group) {
   if (!group) return []
-  if (group.state === 'waiting' || group.state === 'bidding') return ['select-bidder','decrement','increment','name-them']
+  if (group.state === 'waiting' || group.state === 'bidding') return ['select-team','decrement','increment','commit-bid','name-them']
   if (group.state === 'challenged') return ['correct-showdown','start-60s']
   if (group.state === 'countdown') return ['success','fail']
   if (group.state === 'result') return ['next-group']
