@@ -25,21 +25,20 @@
       </nav>
       <div class="sidebar-bottom">
         <span class="status-dot"></span>
-        <div><strong>Supabase room</strong><small>Local gameplay prototype</small></div>
+        <div><strong>Connected</strong></div>
       </div>
     </aside>
 
     <main class="main">
       <header class="topbar">
         <div>
-          <p class="eyebrow">EVENT CONTROL</p>
           <h1 id="eventTitle">Thursday Game Night</h1>
+          <p class="event-status-line" id="eventStatusLine"></p>
         </div>
         <div class="top-actions">
-          <button class="btn ghost" id="switchEvent">Switch event</button>
-          <button class="btn ghost" id="resetDemo">Reset demo</button>
-          <button class="btn primary" id="saveEvent">Save local game setup</button>
-          <button class="btn ghost" id="logoutHost">Log out</button>
+          <button class="btn secondary" id="headerAudience">Audience ↗</button>
+          <details class="admin-menu"><summary class="icon-btn" aria-label="Event menu">•••</summary><div><button id="switchEvent">Switch event</button><button id="logoutHost">Log out</button><button id="resetDemo" class="dev-only">Reset demo</button></div></details>
+          <button id="saveEvent" hidden>Save local game setup</button>
         </div>
       </header>
 
@@ -47,7 +46,7 @@
         <div class="hero-grid">
           <div class="panel event-card">
             <div class="panel-heading">
-              <div><p class="label">EVENT DETAILS</p><h2>Build the night</h2></div>
+              <div><h2>Event details</h2></div>
               <span class="pill ready">Draft</span>
             </div>
             <div class="form-grid">
@@ -60,7 +59,7 @@
 
           <div class="panel join-card">
             <div class="panel-heading">
-              <div><p class="label">JOIN GAME</p><h2>Room <span id="roomCode">4821</span></h2></div>
+              <div><h2>Join · <span id="roomCode">4821</span></h2></div>
               <span class="pill ready">Live room</span>
             </div>
             <div class="join-box">
@@ -72,29 +71,29 @@
         </div>
 
         <div class="section-heading">
-          <div><p class="eyebrow">RUN OF SHOW</p><h2>Rounds</h2><p>Choose the order for the night. Each game keeps its own settings but feeds the same event leaderboard.</p></div>
+          <div><h2>Rounds</h2><p>Planned order for the night. Open any configured round without changing this order.</p></div>
           <button class="btn secondary" id="addRound">+ Add round</button>
         </div>
         <div id="roundsList" class="rounds-list"></div>
       </section>
 
       <section id="view-live" class="view">
-        <div class="section-heading compact"><div><p class="eyebrow">SHOW CONTROL</p><h2>Live Control</h2><p>Run the current round and decide exactly what appears on the pub screen.</p></div></div>
+        <div class="section-heading compact"><div><h2>Live control</h2></div></div>
         <div id="liveControl"></div>
       </section>
 
       <section id="view-teams" class="view">
         <div class="section-heading compact">
-          <div><p class="eyebrow">PLAYERS</p><h2>Teams</h2><p>Supabase-joined Teams are authoritative. Local test Teams remain isolated below for prototype gameplay only.</p></div>
-          <button class="btn secondary" id="addTeam">+ Add team</button>
+          <div><h2>Teams</h2><p id="teamsSummary">Joined Teams</p></div>
+          <button class="btn secondary dev-only" id="addTeam">+ Add team</button>
         </div>
         <div class="panel"><div id="teamsTable"></div></div>
       </section>
 
       <section id="view-leaderboard" class="view">
         <div class="section-heading compact">
-          <div><p class="eyebrow">NIGHT TOTALS</p><h2>Leaderboard</h2><p>This is the host-only view. The audience leaderboard will only appear when you choose to show it.</p></div>
-          <button class="btn secondary" onclick="document.querySelector('[data-view=live]').click()">Live control</button>
+          <div><h2>Leaderboard</h2></div>
+          <button class="btn secondary" id="leaderboardAudience">Show on Audience</button>
         </div>
         <div class="panel"><div id="leaderboardTable"></div></div>
       </section>
