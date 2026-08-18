@@ -65,7 +65,7 @@ export function distanceDirection(signedDifference) {
 
 export function resultPointsLabel(points) {
   const value=Number(points)||0
-  return value>0?`+${value}`:'0 PTS'
+  return value>0?`+${value} PTS`:'0 PTS'
 }
 
 export function revealLayout(teamCount) {
