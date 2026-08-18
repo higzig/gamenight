@@ -8,6 +8,7 @@ const makeState=(group=baseGroup)=>({server_now:'2026-08-14T12:00:00Z',_hydrated
 describe('I Bet You hosted UI model',()=>{
   it('restores the authoritative active group after hydration',()=>expect(activeIBetYouGroup(makeState()).id).toBe('g1'))
   it('renders persisted group assignments',()=>expect(iBetYouAudienceModel(makeState()).members.map(x=>x.name)).toEqual(['Team A','Team B','Team C']))
+  it('carries mascot identity through I Bet You member presentation',()=>{const state=makeState({...baseGroup,members:[{...members[0],mascot_id:'frog'},...members.slice(1)]});expect(iBetYouAudienceModel(state).members[0].mascot_id).toBe('frog')})
   it('exposes the actual persisted group count for variable Admin rendering',()=>{expect(iBetYouGroups(makeState()).length).toBe(2);const four=makeState();four.i_bet_you.groups=[baseGroup,{...baseGroup,id:'g2'},{...baseGroup,id:'g3'},{...baseGroup,id:'g4'}];expect(iBetYouGroups(four).length).toBe(4)})
   it('renders the assigned category',()=>expect(iBetYouAudienceModel(makeState()).category).toBe('Harry Potter Spells'))
   it('increments and decrements bids with safe bounds',()=>{expect(adjustBid(5,1)).toBe(6);expect(adjustBid(5,-1)).toBe(4);expect(adjustBid(1,-1)).toBe(1)})

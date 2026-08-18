@@ -23,7 +23,7 @@ select throws_ok($$select public.open_event_lobby('aa000000-0000-0000-0000-00000
 select set_config('request.jwt.claims','{"sub":"21000000-0000-0000-0000-000000000001","role":"authenticated","is_anonymous":true}',true);
 select is(public.get_host_event_state('aa000000-0000-0000-0000-000000000001'), null, 'anonymous user cannot hydrate host state');
 select throws_ok($$select public.open_event_lobby('aa000000-0000-0000-0000-000000000001')$$, '42501', 'event owner required', 'anonymous user cannot open lobby');
-select lives_ok($$select public.join_event('P2A111','Physical Team')$$, 'anonymous Team joins opened lobby');
+select lives_ok($$select public.join_event('P2A111','Physical Team','frog')$$, 'anonymous Team joins opened lobby');
 select is((public.get_team_room_state('P2A111')->'team'->>'name'), 'Physical Team', 'Team hydration recovers joined identity');
 
 select * from finish();

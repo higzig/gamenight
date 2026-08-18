@@ -3,6 +3,7 @@
     "dev": "vite",
     "build": "vite build",
     "deploy": "wrangler deploy",
+    "release": "node scripts/release.mjs",
     "preview": "vite preview",
     "test": "vitest run"
   },

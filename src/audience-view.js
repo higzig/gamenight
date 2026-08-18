@@ -38,3 +38,22 @@ export async function animateAge({ age, target, reducedMotion = false, sleep = m
   }
   return target.textContent
 }
+
+function stableNumber(value='') { let hash=2166136261;for(const char of value){hash^=char.charCodeAt(0);hash=Math.imul(hash,16777619)}return hash>>>0 }
+
+export function scatterGuessMarkers(markers=[]) {
+  return markers.map((marker,index)=>{const seed=stableNumber(`${marker.mascot_id}:${marker.guess}:${index}`);return {...marker,left:8+(seed%82),top:8+(Math.floor(seed/97)%68)}})
+}
+
+export function buildAgeScale(markers=[],correctAge) {
+  if(!markers.length)return {min:Math.max(0,correctAge-5),max:correctAge+5,answerPosition:50,markers:[]}
+  const values=[...markers.map(x=>Number(x.guess)),Number(correctAge)],low=Math.min(...values),high=Math.max(...values),padding=Math.max(2,Math.ceil((high-low)*.12)),min=Math.max(0,low-padding),max=Math.max(min+4,high+padding),lanePositions=[]
+  const position=value=>((value-min)/(max-min))*100
+  return {min,max,answerPosition:position(correctAge),markers:[...markers].sort((a,b)=>a.guess-b.guess||(a.team_name||'').localeCompare(b.team_name||'')).map(marker=>{const markerPosition=position(marker.guess);let lane=lanePositions.findIndex(last=>Math.abs(markerPosition-last)>=12);if(lane<0)lane=lanePositions.length;lanePositions[lane]=markerPosition;return {...marker,position:markerPosition,lane}})}
+}
+
+export function differencePresentation(signedDifference) {
+  const value=Number(signedDifference)
+  if(value===0)return {short:'EXACT',long:'EXACT!'}
+  return {short:value>0?`+${value}`:`${value}`,long:`${Math.abs(value)} YEAR${Math.abs(value)===1?'':'S'} ${value>0?'HIGH':'LOW'}`}
+}

@@ -8,6 +8,14 @@ Admin requires a permanent email/password Host account. A Team joins at `team.ht
 
 Build the Cloudflare-compatible static output with `npm run build`; publish the `dist` directory.
 
+## Safe release helper
+
+Run `npm run release` from the `main` branch to perform the guarded database-and-Git release flow. The helper first checks for commit-worthy changes, prints `supabase db push --dry-run` output, and requires an explicit `yes` before it can reach the real database push. It then runs the frontend tests, production build, Wrangler dry-run, and `git diff --check`; any failure aborts immediately.
+
+After the checks pass, enter a single-line Git commit message. The helper applies the approved Supabase migrations, verifies them with `supabase migration list`, commits all working-tree changes, and pushes GitHub. It deliberately does not run a Cloudflare production deployment because the GitHub push triggers that deployment.
+
+The command assumes the Supabase CLI is already linked to the intended project and that Git authentication is configured. Review the dry-run output before confirming. It never runs database reset or migration-repair commands.
+
 ## Phase 2C hosted flow
 
 Audience lobby QR codes are generated in the browser and point to the current site's `/team.html?room=ABC123` URL. Gameplay state remains in Postgres: `start_question` records a 15-second server deadline and a reveal deadline five seconds later. A one-second Supabase Cron job calls a private, idempotent transition function to enter suspense and then score/reveal atomically. No browser timer has authority to accept submissions, change state, or score.
@@ -23,6 +31,8 @@ The setup editor searches the private library after a deliberate name/DOB intera
 ## Phase 3A I Bet You
 
 Hosted events can now prepare and run an authoritative I Bet You round from Live Control. Joined Teams are randomly distributed into a participation-aware number of persisted groups, each receives a unique seeded category, and all bid/challenge/timer/judgment actions use Host-owner RPCs. The 60-second timer derives from server timestamps; SUCCESS awards the bidder +5 and FAIL awards the challenger +5 through the shared score ledger. Audience hydration drives the stage display, while Team phones remain passive.
+
+Phase 3B adds a curated, locally rendered mascot identity to Teams. Mascots are unique per active event and claimed through anonymous Team RPCs; legacy Teams remain valid with a neutral fallback. During Guess the Age, the public Audience payload exposes only accepted mascot/age markers until authoritative reveal, then exposes shaped Team result rows for the adaptive age-scale presentation. DOB and correct age remain hidden until reveal.
 
 ## Run locally
 1. Open this folder in VS Code.

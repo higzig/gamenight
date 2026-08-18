@@ -20,13 +20,26 @@ export async function hydrateTeam(client, roomCode) {
   return data
 }
 
-export async function joinTeam(client, roomCode, teamName) {
+export async function hydrateJoinRoom(client, roomCode) {
+  const { data, error } = await client.rpc('get_public_room_state', { p_room_code: roomCode })
+  if (error) throw error
+  return data
+}
+
+export async function joinTeam(client, roomCode, teamName, mascotId) {
   const { error } = await client.rpc('join_event', {
     p_room_code: roomCode,
     p_team_name: teamName.trim(),
+    p_mascot_id: mascotId,
   })
   if (error) throw error
   return hydrateTeam(client, roomCode)
+}
+
+export async function setTeamMascot(client, teamId, mascotId) {
+  const { data, error } = await client.rpc('set_team_mascot', { p_team_id: teamId, p_mascot_id: mascotId })
+  if (error) throw error
+  return data
 }
 
 export async function submitGuess(client, teamId, questionId, guess) {
