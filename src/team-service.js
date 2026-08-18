@@ -47,6 +47,9 @@ export async function submitGuess(client, teamId, questionId, guess) {
   if (error) throw error
   return data
 }
+export async function submitPerfectLieAnswer(client,teamId,questionId,answer){const{data,error}=await client.rpc('submit_perfect_lie_answer',{p_team_id:teamId,p_question_id:questionId,p_answer:answer});if(error)throw error;return data}
+export async function submitPerfectLieLie(client,teamId,questionId,lie){const{error}=await client.rpc('submit_perfect_lie_lie',{p_team_id:teamId,p_question_id:questionId,p_lie:lie});if(error)throw error}
+export async function submitPerfectLieVote(client,teamId,questionId,optionId){const{error}=await client.rpc('submit_perfect_lie_vote',{p_team_id:teamId,p_question_id:questionId,p_option_id:optionId});if(error)throw error}
 
 export function secondsRemaining(state, now = Date.now()) {
   const deadline = Date.parse(state?.event?.question_deadline_at || '')

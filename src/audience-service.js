@@ -18,5 +18,5 @@ export async function hydrateAudience(client, roomCode) {
 
 export function containsSecretData(state) {
   const text = JSON.stringify(state || {})
-  return text.includes('date_of_birth') || text.includes('question_secrets') || (state?.event?.status !== 'reveal' && state?.question?.correct_age != null)
+  return text.includes('date_of_birth') || text.includes('question_secrets') || text.includes('source_reference') || text.includes('accepted_answer_variants') || (state?.event?.status !== 'reveal' && state?.question?.correct_age != null) || (!['reveal','question_complete'].includes(state?.perfect_lie?.round?.phase) && state?.perfect_lie?.question?.correct_answer != null)
 }

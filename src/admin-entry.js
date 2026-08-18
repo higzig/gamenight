@@ -1,5 +1,5 @@
 import { createGameNightClient, getSupabaseConfigError } from './supabase-client.js'
-import { activateHostedRound, advanceRemoteQuestion, changeIBetYouCategory, challengeIBetYou, copyEventSession, correctIBetYouShowdown, createJoinableEvent, deleteOwnedEvent, hydrateHostEvent, isAnonymousUser, judgeIBetYouGroup, listOwnedEvents, lockRemoteQuestion, markWikipediaChecked, nextIBetYouGroup, reorderGuessAgeQuestion, resetIBetYouGroup, restartGuessAgeRound, revealRemoteQuestion, saveCelebrityRecord, saveGuessAgeRound, searchCelebrityLibrary, setIBetYouBid, setRemoteDisplay, setupIBetYouRound, startIBetYouTimer, startRemoteQuestion, swapIBetYouTeams, uploadCelebrityImage } from './host-service.js'
+import * as hostServices from './host-service.js'
 import { createAdminApplication } from './admin-application.js'
 
 const supabase = createGameNightClient('game-night-host-auth')
@@ -7,7 +7,7 @@ const supabase = createGameNightClient('game-night-host-auth')
 const application = createAdminApplication({
   client: supabase,
   configError: getSupabaseConfigError(),
-  services: { activateHostedRound, advanceRemoteQuestion, changeIBetYouCategory, challengeIBetYou, copyEventSession, correctIBetYouShowdown, createJoinableEvent, deleteOwnedEvent, hydrateHostEvent, isAnonymousUser, judgeIBetYouGroup, listOwnedEvents, lockRemoteQuestion, markWikipediaChecked, nextIBetYouGroup, reorderGuessAgeQuestion, resetIBetYouGroup, restartGuessAgeRound, revealRemoteQuestion, saveCelebrityRecord, saveGuessAgeRound, searchCelebrityLibrary, setIBetYouBid, setRemoteDisplay, setupIBetYouRound, startIBetYouTimer, startRemoteQuestion, swapIBetYouTeams, uploadCelebrityImage },
+  services: hostServices,
   loadLegacyAdmin: () => import('../admin.js'),
 })
 

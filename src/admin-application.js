@@ -130,6 +130,12 @@ export function createAdminApplication({
       judgeIBetYou: (groupId,success) => services.judgeIBetYouGroup(client,groupId,success).then(refreshActiveEvent),
       nextIBetYou: groupId => services.nextIBetYouGroup(client,groupId).then(refreshActiveEvent),
       resetIBetYou: groupId => services.resetIBetYouGroup(client,groupId).then(refreshActiveEvent),
+      savePerfectLie: (title,categories) => services.savePerfectLieRound(client,eventId,title,categories).then(refreshActiveEvent),
+      startPerfectLieQuestion: questionId => services.startPerfectLieQuestion(client,eventId,questionId).then(refreshActiveEvent),
+      closePerfectLieWriting: () => services.closePerfectLieWriting(client,eventId).then(refreshActiveEvent),
+      startPerfectLieReveal: () => services.startPerfectLieReveal(client,eventId).then(refreshActiveEvent),
+      advancePerfectLieReveal: () => services.advancePerfectLieReveal(client,eventId).then(refreshActiveEvent),
+      advancePerfectLieQuestion: questionId => services.advancePerfectLieQuestion(client,eventId,questionId).then(refreshActiveEvent),
       activateRound: roundId => services.activateHostedRound(client,eventId,roundId).then(refreshActiveEvent),
       startNewSession: async () => {
         const newId = await services.copyEventSession(client, eventId)
