@@ -16,7 +16,6 @@ export async function createJoinableEvent(client, fields) {
     p_name: fields.name,
     p_venue: fields.venue,
     p_event_date: fields.eventDate,
-    p_expected_teams: fields.expectedTeams,
   })
   if (createError) throw createError
   const { error: lobbyError } = await client.rpc('open_event_lobby', { p_event_id: created.id })

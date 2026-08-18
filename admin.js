@@ -24,7 +24,7 @@ const seedCelebs = [
 
 function defaultState(){return {
   version:3,
-  event:{name:'Thursday Game Night',venue:'The Local',date:'2026-08-20',expectedTeams:12,roomCode:'4821'},
+  event:{name:'Thursday Game Night',venue:'The Local',date:'2026-08-20',roomCode:'4821'},
   teams:[
     {id:1,name:'Quiztopher Columbus',scores:{},total:0},
     {id:2,name:'No Eye Deer',scores:{},total:0},
@@ -89,14 +89,14 @@ function bindAudienceSelector(){document.querySelectorAll('[data-display]').forE
 function bindEventFields(){
   const remote=remoteSession()?.event;
   if(remote){
-    state.event={...state.event,name:remote.name,venue:remote.venue,date:remote.event_date,expectedTeams:remote.expected_teams,roomCode:remote.room_code};
-    $('#eventName').value=remote.name;$('#venueName').value=remote.venue;$('#eventDate').value=remote.event_date;$('#expectedTeams').value=remote.expected_teams;$('#eventTitle').textContent=remote.name;$('#roomCode').textContent=remote.room_code;
-    ['eventName','venueName','eventDate','expectedTeams'].forEach(id=>{$('#'+id).disabled=true;$('#'+id).title='Database-backed event details are read-only in Phase 2A'});
+    state.event={...state.event,name:remote.name,venue:remote.venue,date:remote.event_date,roomCode:remote.room_code};
+    $('#eventName').value=remote.name;$('#venueName').value=remote.venue;$('#eventDate').value=remote.event_date;$('#eventTitle').textContent=remote.name;$('#roomCode').textContent=remote.room_code;
+    ['eventName','venueName','eventDate'].forEach(id=>{$('#'+id).disabled=true;$('#'+id).title='Database-backed event details are read-only'});
     $('#connectedCount').textContent=`${remoteTeams().length} teams joined`;$('#eventStatusLine').textContent=`${remote.room_code} · ${remoteTeams().length} Teams · ${remote.status}`;
     return;
   }
-  $('#eventName').value=state.event.name;$('#venueName').value=state.event.venue;$('#eventDate').value=state.event.date;$('#expectedTeams').value=state.event.expectedTeams;$('#eventTitle').textContent=state.event.name;$('#roomCode').textContent=state.event.roomCode;$('#connectedCount').textContent=`${state.teams.length} local test teams`;
-  [['eventName','name'],['venueName','venue'],['eventDate','date'],['expectedTeams','expectedTeams']].forEach(([id,key])=>$('#'+id).oninput=e=>{state.event[key]=key==='expectedTeams'?Number(e.target.value):e.target.value;$('#eventTitle').textContent=state.event.name||'Untitled Game Night';save(false)});
+  $('#eventName').value=state.event.name;$('#venueName').value=state.event.venue;$('#eventDate').value=state.event.date;$('#eventTitle').textContent=state.event.name;$('#roomCode').textContent=state.event.roomCode;$('#connectedCount').textContent=`${state.teams.length} local test teams`;
+  [['eventName','name'],['venueName','venue'],['eventDate','date']].forEach(([id,key])=>$('#'+id).oninput=e=>{state.event[key]=e.target.value;$('#eventTitle').textContent=state.event.name||'Untitled Game Night';save(false)});
 }
 function roundSummary(r){
   if(r.type==='guessAge') return `${r.settings.celebrities?.length||0} celebrities · ${r.settings.timer||15}s answers`;

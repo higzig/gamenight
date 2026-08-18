@@ -32,6 +32,11 @@ function setup({ session = { user: { is_anonymous: false } }, events = [], creat
 }
 
 const flush = () => new Promise(resolve => setTimeout(resolve, 0))
+const dateAt = offset => { const date = new Date(); date.setDate(date.getDate() + offset); return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}` }
+const fillCreateForm = () => {
+  document.getElementById('newEventName').value = 'Friday Night Quiz'
+  document.getElementById('newEventVenue').value = 'The Oval'
+}
 
 describe('Admin top-level application states', () => {
   beforeEach(() => { window.gameNightRemoteSession = null })
@@ -65,6 +70,7 @@ describe('Admin top-level application states', () => {
   it('successful creation activates Admin and removes the chooser', async () => {
     const { application } = setup()
     await application.init()
+    fillCreateForm()
     const form = document.getElementById('createRemoteEvent'), button = document.getElementById('createEventButton')
     form.dispatchEvent(new SubmitEvent('submit', { bubbles: true, cancelable: true, submitter: button })); await flush(); await flush()
     expect(application.getState()).toBe('active-event')
@@ -73,13 +79,52 @@ describe('Admin top-level application states', () => {
   })
 
   it('selecting an existing event uses the same active transition', async () => {
-    const { application } = setup({ events: [{ id: 'event-1', name: 'Night', room_code: 'ABC123', event_date: '2026-08-20', status: 'lobby' }] })
+    const { application } = setup({ events: [{ id: 'event-1', name: 'Night', room_code: 'ABC123', event_date: dateAt(1), status: 'lobby' }] })
     await application.init(); document.querySelector('.open-event').click(); await flush(); await flush()
     expect(application.getState()).toBe('active-event')
     expect(document.getElementById('adminGateway').hidden).toBe(true)
     expect(document.getElementById('adminApp').hidden).toBe(false)
   })
-  it('requires confirmation before deleting an event and then refreshes the chooser',async()=>{const remove=vi.fn().mockResolvedValue(null),events=[{id:'event-1',name:'Night',room_code:'ABC123',event_date:'2026-08-20',status:'lobby'}],{application,services}=setup({events,remove});window.confirm=vi.fn().mockReturnValue(false);await application.init();document.querySelector('.delete-event').click();await flush();expect(remove).not.toHaveBeenCalled();window.confirm.mockReturnValue(true);document.querySelector('.delete-event').click();await flush();await flush();expect(remove).toHaveBeenCalledWith(expect.anything(),'event-1');expect(services.listOwnedEvents).toHaveBeenCalledTimes(2)})
+  it('requires confirmation before deleting an event from its overflow and then refreshes the chooser',async()=>{const remove=vi.fn().mockResolvedValue(null),events=[{id:'event-1',name:'Night',room_code:'ABC123',event_date:dateAt(1),status:'lobby'}],{application,services}=setup({events,remove});window.confirm=vi.fn().mockReturnValue(false);await application.init();expect(document.querySelector('.event-overflow .delete-event')).not.toBeNull();expect(document.querySelector('.event-choice-actions>.delete-event')).toBeNull();document.querySelector('.delete-event').click();await flush();expect(remove).not.toHaveBeenCalled();window.confirm.mockReturnValue(true);document.querySelector('.delete-event').click();await flush();await flush();expect(remove).toHaveBeenCalledWith(expect.anything(),'event-1');expect(services.listOwnedEvents).toHaveBeenCalledTimes(2)})
+
+  it('separates past events into a collapsed archive with the correct count', async () => {
+    const events = [
+      {id:'today',name:'Today',room_code:'TOD123',event_date:dateAt(0),status:'lobby'},
+      {id:'future',name:'Future',room_code:'FUT123',event_date:dateAt(2),status:'lobby'},
+      {id:'past',name:'Past',room_code:'PAS123',event_date:dateAt(-1),status:'completed'},
+    ]
+    const { application } = setup({ events }); await application.init()
+    expect(document.getElementById('ownedEvents').textContent).toContain('Today')
+    expect(document.getElementById('ownedEvents').textContent).toContain('Future')
+    expect(document.getElementById('ownedEvents').textContent).not.toContain('Past')
+    expect(document.querySelector('.archived-events').open).toBe(false)
+    expect(document.querySelector('.archived-events>summary').textContent).toBe('View archived (1)')
+    expect(document.getElementById('archivedEventList').textContent).toContain('Past')
+  })
+
+  it('opens an archived event without mutating it first', async () => {
+    const events = [{id:'past',name:'Past',room_code:'PAS123',event_date:dateAt(-1),status:'completed'}]
+    const { application, services } = setup({ events }); await application.init()
+    document.querySelector('#archivedEventList .open-event').click(); await flush(); await flush()
+    expect(services.hydrateHostEvent).toHaveBeenCalledWith(expect.anything(), 'past')
+    expect(application.getState()).toBe('active-event')
+  })
+
+  it('starts creation fields empty, defaults date locally, and omits Expected Teams', async () => {
+    const { application } = setup(); await application.init()
+    expect(document.getElementById('newEventName').value).toBe('')
+    expect(document.getElementById('newEventVenue').value).toBe('')
+    expect(document.getElementById('newEventDate').value).toBe(dateAt(0))
+    expect(document.getElementById('newExpectedTeams')).toBeNull()
+  })
+
+  it('prevents blank event names with a friendly message', async () => {
+    const create = vi.fn(), { application } = setup({ create }); await application.init()
+    const form = document.getElementById('createRemoteEvent'), button = document.getElementById('createEventButton')
+    form.dispatchEvent(new SubmitEvent('submit', { bubbles: true, cancelable: true, submitter: button })); await flush()
+    expect(create).not.toHaveBeenCalled()
+    expect(document.getElementById('gatewayError').textContent).toContain('Enter an event name')
+  })
 
   it('Switch event returns to chooser and hides Admin', async () => {
     const { application } = setup()
@@ -93,6 +138,7 @@ describe('Admin top-level application states', () => {
     const pending = deferred(), create = vi.fn(() => pending.promise)
     const { application } = setup({ create })
     await application.init()
+    fillCreateForm()
     const form = document.getElementById('createRemoteEvent'), button = document.getElementById('createEventButton')
     const submit = () => form.dispatchEvent(new SubmitEvent('submit', { bubbles: true, cancelable: true, submitter: button }))
     submit(); submit(); await flush()
@@ -105,11 +151,12 @@ describe('Admin top-level application states', () => {
   it('restores the create form and shows a safe error after failure', async () => {
     const { application } = setup({ create: vi.fn().mockRejectedValue(new Error('sensitive backend detail')) })
     await application.init()
+    fillCreateForm()
     const form = document.getElementById('createRemoteEvent'), button = document.getElementById('createEventButton')
     form.dispatchEvent(new SubmitEvent('submit', { bubbles: true, cancelable: true, submitter: button })); await flush()
     expect(application.getState()).toBe('choosing-event')
     expect(button.disabled).toBe(false)
-    expect(button.textContent).toBe('Create event and open lobby')
+    expect(button.textContent).toBe('Create Game Night')
     expect(document.getElementById('gatewayError').textContent).toContain('Could not create the event')
     expect(document.getElementById('gatewayError').textContent).not.toContain('sensitive backend detail')
   })

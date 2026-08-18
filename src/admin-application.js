@@ -1,3 +1,5 @@
+import { classifyEvents, formatEventDate, humanEventStatus, localCalendarDate } from './event-chooser.js'
+
 export function createAdminApplication({
   client,
   configError,
@@ -25,8 +27,8 @@ export function createAdminApplication({
     dashboard.dataset.appState = nextState
   }
 
-  function card(content) {
-    gateway.innerHTML = `<section class="auth-card">${content}</section>`
+  function card(content, className = '') {
+    gateway.innerHTML = `<section class="auth-card ${className}">${content}</section>`
   }
 
   function errorTarget(message) {
@@ -55,15 +57,19 @@ export function createAdminApplication({
     }
   }
 
-  const createEventForm = () => `<form class="auth-form" id="createRemoteEvent"><label>Event name<input id="newEventName" maxlength="120" required value="Thursday Game Night"></label><label>Venue<input id="newEventVenue" maxlength="160" value="The Local"></label><label>Event date<input id="newEventDate" type="date" required value="${new Date().toISOString().slice(0, 10)}"></label><label>Expected teams<input id="newExpectedTeams" type="number" min="1" max="100" required value="12"></label><button class="btn primary" id="createEventButton" type="submit">Create event and open lobby</button></form>`
+  const createEventForm = () => `<form class="auth-form create-event-form" id="createRemoteEvent"><label>Event name<input id="newEventName" maxlength="120" required placeholder="e.g. Friday Night Quiz"></label><label>Venue <span class="optional">Optional</span><input id="newEventVenue" maxlength="160" placeholder="e.g. The Oval"></label><label>Date<input id="newEventDate" type="date" required value="${localCalendarDate()}"></label><button class="btn primary" id="createEventButton" type="submit">Create Game Night</button></form>`
+
+  const eventRow = event => `<div class="event-choice" data-event-id="${esc(event.id)}"><div class="event-choice-details"><strong>${esc(event.name)}</strong><span>${esc(formatEventDate(event.event_date))} · ${esc(humanEventStatus(event.status))} · ${esc(event.room_code)}</span></div><div class="event-choice-actions"><button class="btn secondary open-event" data-id="${esc(event.id)}">Open</button><details class="event-overflow"><summary class="icon-btn" aria-label="More actions for ${esc(event.name)}">•••</summary><div><button class="delete-event danger-link" data-id="${esc(event.id)}" data-name="${esc(event.name)}">Delete event</button></div></details></div></div>`
 
   async function renderEventChooser() {
     transition('choosing-event')
     try {
       const events = await services.listOwnedEvents(client)
-      card(`<p class="eyebrow">YOUR EVENTS</p><h1>Choose a Game Night</h1><p>Open an existing event or create a new six-character room.</p>
-        <div id="ownedEvents">${events.map(event => `<div class="event-choice"><div><strong>${esc(event.name)}</strong><span>${esc(event.room_code)} · ${esc(event.event_date)} · ${esc(event.status)}</span></div><div class="event-choice-actions"><button class="btn secondary open-event" data-id="${event.id}">Open</button><button class="btn ghost delete-event" data-id="${event.id}" data-name="${esc(event.name)}">Delete</button></div></div>`).join('') || '<p>No events yet.</p>'}</div>
-        <h2 style="margin-top:24px">Create event</h2>${createEventForm()}<p class="auth-error" id="gatewayError"></p><div class="auth-actions"><button class="btn ghost" id="chooserLogout">Log out</button></div>`)
+      const { current, archived } = classifyEvents(events)
+      card(`<p class="eyebrow">YOUR EVENTS</p><h1>Choose a Game Night</h1><p>Open a current event or create a new six-character room.</p>
+        <section class="event-list-section"><h2>Current & upcoming</h2><div id="ownedEvents">${current.map(eventRow).join('') || '<p class="event-list-empty">No current or upcoming events.</p>'}</div></section>
+        ${archived.length ? `<details class="archived-events"><summary>View archived (${archived.length})</summary><div id="archivedEventList">${archived.map(eventRow).join('')}</div></details>` : ''}
+        <section class="create-event-section"><h2>Create event</h2>${createEventForm()}<p class="auth-error" id="gatewayError"></p></section><div class="auth-actions"><button class="btn ghost" id="chooserLogout">Log out</button></div>`, 'event-chooser-card')
       doc.querySelectorAll('.open-event').forEach(button => button.onclick = () => openEvent(button.dataset.id))
       doc.querySelectorAll('.delete-event').forEach(button => button.onclick = async () => {if(!win.confirm(`Delete “${button.dataset.name}” permanently? Teams, rounds, submissions, and scores for this event will be removed.`))return;button.disabled=true;button.textContent='Deleting…';try{await services.deleteOwnedEvent(client,button.dataset.id);await renderEventChooser()}catch(error){console.error(error);button.disabled=false;button.textContent='Delete';errorTarget('Could not delete that event. Refresh and try again.')}})
       doc.getElementById('chooserLogout').onclick = logout
@@ -76,20 +82,23 @@ export function createAdminApplication({
   async function handleCreateEvent(event) {
     event.preventDefault()
     if (createPending) return
+    const name = doc.getElementById('newEventName').value.trim()
+    const eventDate = doc.getElementById('newEventDate').value
+    if (!name) return errorTarget('Enter an event name before creating the game night.')
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(eventDate)) return errorTarget('Choose a valid event date.')
     createPending = true; errorTarget('')
     const button = doc.getElementById('createEventButton')
     button.disabled = true; button.textContent = 'Creating game night…'
     try {
       const id = await services.createJoinableEvent(client, {
-        name: doc.getElementById('newEventName').value.trim(),
+        name,
         venue: doc.getElementById('newEventVenue').value.trim(),
-        eventDate: doc.getElementById('newEventDate').value,
-        expectedTeams: Number(doc.getElementById('newExpectedTeams').value),
+        eventDate,
       })
       await openEvent(id)
     } catch (error) {
       console.error(error)
-      createPending = false; button.disabled = false; button.textContent = 'Create event and open lobby'
+      createPending = false; button.disabled = false; button.textContent = 'Create Game Night'
       errorTarget('Could not create the event. Check the details and try again. No additional attempt was made.')
     }
   }

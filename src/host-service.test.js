@@ -11,9 +11,11 @@ describe('Host service', () => {
     const rpc = vi.fn()
       .mockResolvedValueOnce({ data: { id: 'event-id' }, error: null })
       .mockResolvedValueOnce({ data: { id: 'event-id', status: 'lobby' }, error: null })
-    const id = await createJoinableEvent({ rpc }, { name: 'Night', venue: 'Pub', eventDate: '2026-08-20', expectedTeams: 12 })
+    const id = await createJoinableEvent({ rpc }, { name: 'Night', venue: 'Pub', eventDate: '2026-08-20' })
     expect(id).toBe('event-id')
     expect(rpc.mock.calls.map(call => call[0])).toEqual(['create_event', 'open_event_lobby'])
+    expect(rpc.mock.calls[0][1]).toEqual({ p_name: 'Night', p_venue: 'Pub', p_event_date: '2026-08-20' })
+    expect(rpc.mock.calls[0][1]).not.toHaveProperty('p_expected_teams')
   })
   it('saves lineup references and reusable media instead of base64 data', async () => {
     const rpc=vi.fn().mockResolvedValue({data:'round-id',error:null})
