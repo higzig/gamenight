@@ -72,3 +72,34 @@ export function revealLayout(teamCount) {
   const count=Math.max(0,Number(teamCount)||0)
   return {count,columns:count<=2?2:count<=4?4:count<=6?3:4,dense:count>4}
 }
+
+export function lockCountChange(previous,next,reducedMotion=false) {
+  return {value:Number(next)||0,pop:!reducedMotion&&previous!=null&&Number(next)>Number(previous)}
+}
+
+export function answeringPresentation(answerCount,teamCount,previousCount=null,reducedMotion=false) {
+  const change=lockCountChange(previousCount,answerCount,reducedMotion)
+  return {countText:`${change.value} / ${Number(teamCount)||0}`,label:'TEAMS LOCKED IN',pop:change.pop,individualGuesses:[]}
+}
+
+export function buildCountUpTrack(markers=[],correctAge) {
+  const answer=Math.max(1,Math.min(120,Number(correctAge)||1)),highest=Math.max(answer,...markers.map(x=>Number(x.guess)||1)),max=Math.max(1,Math.min(120,highest)),lanes=[]
+  const position=age=>(Math.max(1,Math.min(max,Number(age)))/max)*100
+  const sorted=[...markers].sort((a,b)=>Number(a.guess)-Number(b.guess)||(a.team_name||'').localeCompare(b.team_name||''))
+  return {max,correctAge:answer,answerPosition:position(answer),markers:sorted.map(marker=>{const markerPosition=position(marker.guess);let lane=lanes.findIndex(last=>Math.abs(last-markerPosition)>=11);if(lane<0)lane=lanes.length;lanes[lane]=markerPosition;return {...marker,position:markerPosition,lane}})}
+}
+
+export function revealFrame(age,track) {
+  const current=Math.max(1,Math.min(track.max,Number(age)||1))
+  return {age:current,progress:(current/track.max)*100,primaryProgress:(Math.min(current,track.correctAge)/track.max)*100,overshootProgress:(Math.max(0,current-track.correctAge)/track.max)*100,overshooting:current>track.correctAge,correctReached:current>=track.correctAge,revealedMarkers:track.markers.filter(marker=>Number(marker.guess)<=current)}
+}
+
+export async function animateCountUp({track,onFrame=()=>{},onCorrect=()=>{},onComplete=()=>{},reducedMotion=false,sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms))}) {
+  if(reducedMotion){const frame=revealFrame(track.max,track);onFrame(frame);onCorrect(frame);onComplete(frame);return frame}
+  let frame=revealFrame(1,track);onFrame(frame)
+  await sleep(250)
+  if(track.correctAge===1){onCorrect(frame);await sleep(900)}
+  const beforeDelay=Math.max(22,Math.min(52,Math.round(2200/track.correctAge))),afterCount=Math.max(1,track.max-track.correctAge),afterDelay=Math.max(18,Math.min(38,Math.round(700/afterCount)))
+  for(let age=2;age<=track.max;age+=1){frame=revealFrame(age,track);onFrame(frame);if(age===track.correctAge){onCorrect(frame);await sleep(900)}else await sleep(age<track.correctAge?beforeDelay:afterDelay)}
+  onComplete(frame);return frame
+}

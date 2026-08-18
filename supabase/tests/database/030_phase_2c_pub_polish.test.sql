@@ -1,6 +1,6 @@
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(29);
+select plan(38);
 
 insert into auth.users(instance_id,id,aud,role,email,encrypted_password,email_confirmed_at,raw_app_meta_data,raw_user_meta_data,created_at,updated_at) values
 ('00000000-0000-0000-0000-000000000000','13000000-0000-0000-0000-000000000001','authenticated','authenticated','p2c-host@test.local','',now(),'{}','{}',now(),now()),
@@ -19,9 +19,21 @@ select lives_ok($$select public.start_question('ac000000-0000-0000-0000-00000000
 select is((select extract(epoch from(question_reveal_due_at-question_deadline_at))::integer from public.events where id='ac000000-0000-0000-0000-000000000001'),5,'server schedules five second suspense');
 
 reset role;
+insert into public.submissions(event_id,question_id,team_id,guess_integer) select id,active_question_id,'dc000000-0000-0000-0000-000000000001',46 from public.events where id='ac000000-0000-0000-0000-000000000001';
+set local role authenticated;
+select set_config('request.jwt.claims','{"sub":"23000000-0000-0000-0000-000000000001","role":"authenticated","is_anonymous":true}',true);
+select pass('accepted active submission fixture is present');
+select is(public.get_public_room_state('P2C123')->>'submitted_count','1','active public state exposes aggregate submitted count');
+select is(public.get_public_room_state('P2C123')->'guess_markers','[]'::jsonb,'active public state exposes no individual guesses');
+select ok(public.get_public_room_state('P2C123')->'question'->'correct_age'='null'::jsonb,'correct age remains unavailable while answering');
+select ok(public.get_public_room_state('P2C123')::text not like '%date_of_birth%' and public.get_public_room_state('P2C123')::text not like '%auth_user_id%','active public state leaks neither DOB nor auth identity');
+
+reset role;
 update public.events set question_started_at=clock_timestamp()-interval '16 seconds',question_deadline_at=clock_timestamp()-interval '1 second',question_reveal_due_at=clock_timestamp()+interval '4 seconds' where id='ac000000-0000-0000-0000-000000000001';
 select is(private.process_guess_age_transitions(),1,'scheduler closes expired question');
 select is((select status from public.events where id='ac000000-0000-0000-0000-000000000001'),'suspense','event enters suspense');
+select is(public.get_public_room_state('P2C123')->'guess_markers','[]'::jsonb,'suspense public state still exposes no individual guesses');
+select ok(public.get_public_room_state('P2C123')->'question'->'correct_age'='null'::jsonb and public.get_public_room_state('P2C123')::text not like '%date_of_birth%','suspense hides correct age and DOB');
 
 set local role authenticated;
 select set_config('request.jwt.claims','{"sub":"23000000-0000-0000-0000-000000000001","role":"authenticated","is_anonymous":true}',true);
@@ -30,10 +42,11 @@ select throws_ok($$select public.restart_guess_age_round('ac000000-0000-0000-000
 select throws_ok($$select public.copy_event_session('ac000000-0000-0000-0000-000000000001')$$,'42501','event owner required','Team cannot create Host session');
 
 reset role;
-insert into public.submissions(event_id,question_id,team_id,guess_integer) select id,active_question_id,'dc000000-0000-0000-0000-000000000001',46 from public.events where id='ac000000-0000-0000-0000-000000000001';
 update public.events set question_reveal_due_at=clock_timestamp()-interval '1 second' where id='ac000000-0000-0000-0000-000000000001';
 select is(private.process_guess_age_transitions(),1,'scheduler reveals and scores');
 select is((select status from public.events where id='ac000000-0000-0000-0000-000000000001'),'reveal','event reaches reveal');
+select ok(public.get_public_room_state('P2C123')->'guess_markers'->0 ?& array['team_name','mascot_id','guess','signed_difference','points'] and not (public.get_public_room_state('P2C123')->'guess_markers'->0 ? 'team_id'),'reveal exposes shaped result without Team identifier');
+select is(public.get_public_room_state('P2C123')->'question'->>'correct_age','46','correct age becomes available only at reveal');
 select is((select count(*) from public.score_awards where event_id='ac000000-0000-0000-0000-000000000001' and kind='game'),1::bigint,'automatic scoring creates one award');
 select is(private.process_guess_age_transitions(),0,'automatic transition retry is idempotent');
 select is((select count(*) from public.score_awards where event_id='ac000000-0000-0000-0000-000000000001' and kind='game'),1::bigint,'automatic score remains single');

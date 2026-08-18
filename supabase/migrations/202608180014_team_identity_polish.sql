@@ -64,12 +64,12 @@ $$;
 
 create or replace function public.get_public_room_state(p_room_code text) returns jsonb
 language sql stable security definer set search_path='' as $$
-  select case when s is null then null else s||jsonb_build_object(
+  select case when s is null then null else (s-'answer_count')||jsonb_build_object(
+    'submitted_count',coalesce((s->>'answer_count')::integer,0),
     'taken_mascot_ids',coalesce((select jsonb_agg(t.mascot_id order by t.mascot_id) from public.teams t where t.event_id=(s->'event'->>'id')::uuid and t.status='active' and t.mascot_id is not null),'[]'::jsonb),
     'lobby_roster',case when s->'event'->>'status' in('lobby','ready') then coalesce((select jsonb_agg(jsonb_build_object('name',t.name,'mascot_id',t.mascot_id) order by t.joined_at,t.name) from public.teams t where t.event_id=(s->'event'->>'id')::uuid and t.status='active'),'[]'::jsonb) else '[]'::jsonb end,
     'guess_markers',case
       when s->'event'->>'status'='reveal' then coalesce((select jsonb_agg(jsonb_build_object('team_name',t.name,'mascot_id',t.mascot_id,'guess',sub.guess_integer,'signed_difference',sub.guess_integer-(s->'question'->>'correct_age')::integer,'points',coalesce(a.points,0)) order by sub.guess_integer,t.name) from public.submissions sub join public.teams t on t.id=sub.team_id left join public.score_awards a on a.question_id=sub.question_id and a.team_id=t.id and a.kind='game' where sub.event_id=(s->'event'->>'id')::uuid and sub.question_id=(s->'event'->>'active_question_id')::uuid),'[]'::jsonb)
-      when s->'event'->>'status' in('question','locked','suspense') then coalesce((select jsonb_agg(jsonb_build_object('mascot_id',t.mascot_id,'guess',sub.guess_integer) order by sub.accepted_at) from public.submissions sub join public.teams t on t.id=sub.team_id where sub.event_id=(s->'event'->>'id')::uuid and sub.question_id=(s->'event'->>'active_question_id')::uuid),'[]'::jsonb)
       else '[]'::jsonb end,
     'leaderboard',case when s->'event'->>'display_mode'='leaderboard' then (select coalesce(jsonb_agg(jsonb_build_object('team_id',x.team_id,'name',x.name,'mascot_id',x.mascot_id,'points',x.points) order by x.points desc,x.name),'[]'::jsonb) from(select t.id team_id,t.name,t.mascot_id,coalesce(sum(sa.points),0)::integer points from public.teams t left join public.score_awards sa on sa.team_id=t.id where t.event_id=(s->'event'->>'id')::uuid and t.status='active' group by t.id,t.name,t.mascot_id)x) else '[]'::jsonb end,
     'i_bet_you',case when private.i_bet_you_state((s->'event'->>'id')::uuid)->'round'->>'id'=s->'event'->>'active_round_id' then private.i_bet_you_state((s->'event'->>'id')::uuid) else null end

@@ -39,7 +39,7 @@ select lives_ok($$select public.start_question('ae000000-0000-0000-0000-00000000
 
 select set_config('request.jwt.claims','{"sub":"28000000-0000-0000-0000-000000000001","role":"authenticated","is_anonymous":true}',true);
 select lives_ok($$select public.submit_guess((select id from public.teams where auth_user_id=auth.uid()),current_setting('test.mascot_question')::uuid,24)$$,'authoritative mascot Team guess accepted');
-select is(public.get_public_room_state('MASC01')->'guess_markers'->0,jsonb_build_object('mascot_id','frog','guess',24),'active public marker exposes mascot and guess only');
+select is(public.get_public_room_state('MASC01')->'guess_markers','[]'::jsonb,'active public state exposes no individual guesses');
 select ok(public.get_public_room_state('MASC01')::text not like '%Frogs%' and public.get_public_room_state('MASC01')::text not like '%date_of_birth%' and public.get_public_room_state('MASC01')->'question'->'correct_age'='null'::jsonb,'active public state hides Team name, DOB, and correct age');
 
 select set_config('request.jwt.claims','{"sub":"18000000-0000-0000-0000-000000000001","role":"authenticated","is_anonymous":false}',true);
