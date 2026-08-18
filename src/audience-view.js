@@ -82,6 +82,16 @@ export function answeringPresentation(answerCount,teamCount,previousCount=null,r
   return {countText:`${change.value} / ${Number(teamCount)||0}`,label:'TEAMS LOCKED IN',pop:change.pop,individualGuesses:[]}
 }
 
+export function lockCountParts(submitted,total) {
+  const safe=value=>{const number=Number(value);return Number.isFinite(number)?Math.max(0,Math.trunc(number)):0}
+  return {submitted:String(safe(submitted)),total:String(safe(total)),label:'TEAMS LOCKED IN'}
+}
+
+export function revealAgeLabel({settled=false,correctReached=false,overshooting=false}={}) {
+  if(settled||correctReached)return overshooting?'HIGH GUESSES':''
+  return 'COUNTING UP'
+}
+
 export function buildCountUpTrack(markers=[],correctAge) {
   const answer=Math.max(1,Math.min(120,Number(correctAge)||1)),highest=Math.max(answer,...markers.map(x=>Number(x.guess)||1)),max=Math.max(1,Math.min(120,highest)),lanes=[]
   const position=age=>(Math.max(1,Math.min(max,Number(age)))/max)*100

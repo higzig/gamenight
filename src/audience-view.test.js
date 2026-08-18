@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it, vi } from 'vitest'
-import { animateAge,animateCountUp,answeringPresentation,audienceMode,buildAgeScale,buildCountUpTrack,differencePresentation,distanceDirection,lockCountChange,resultPointsLabel,revealFrame,revealLayout,revealOrder,scatterGuessMarkers,suspenseSeconds,teamJoinUrl } from './audience-view.js'
+import { animateAge,animateCountUp,answeringPresentation,audienceMode,buildAgeScale,buildCountUpTrack,differencePresentation,distanceDirection,lockCountChange,lockCountParts,resultPointsLabel,revealAgeLabel,revealFrame,revealLayout,revealOrder,scatterGuessMarkers,suspenseSeconds,teamJoinUrl } from './audience-view.js'
 
 describe('Phase 2C audience experience', () => {
   it('builds the QR target from the deployed origin and room query', () => {
@@ -41,4 +41,7 @@ describe('Phase 2C audience experience', () => {
   it('reveals guesses only when crossed and groups equal ages together',()=>{const track=buildCountUpTrack([{team_name:'A',guess:45},{team_name:'B',guess:45},{team_name:'C',guess:68}],49);expect(revealFrame(44,track).revealedMarkers).toHaveLength(0);expect(revealFrame(45,track).revealedMarkers.map(x=>x.team_name)).toEqual(['A','B']);expect(revealFrame(49,track).correctReached).toBe(true);expect(revealFrame(67,track).revealedMarkers).toHaveLength(2);expect(revealFrame(68,track).revealedMarkers).toHaveLength(3)})
   it('pauses at the correct age before high guesses',async()=>{const track=buildCountUpTrack([{guess:8}],5),sleeps=[];await animateCountUp({track,sleep:ms=>{sleeps.push(ms);return Promise.resolve()}});expect(sleeps).toContain(900)})
   it('skips travelling animation for reduced motion',async()=>{const track=buildCountUpTrack([{guess:68}],49),frames=[],sleep=vi.fn();await animateCountUp({track,reducedMotion:true,onFrame:f=>frames.push(f),sleep});expect(frames).toHaveLength(1);expect(frames[0].age).toBe(68);expect(sleep).not.toHaveBeenCalled()})
+  it.each([[0,2,'0','2'],[1,2,'1','2'],[2,2,'2','2'],[9,10,'9','10'],[10,10,'10','10']])('formats %i / %i without undefined or layout-dependent text', (submitted,total,current,denominator)=>expect(lockCountParts(submitted,total)).toEqual({submitted:current,total:denominator,label:'TEAMS LOCKED IN'}))
+  it('defaults missing lock counts to neutral zeroes',()=>expect(lockCountParts(undefined,undefined)).toEqual({submitted:'0',total:'0',label:'TEAMS LOCKED IN'}))
+  it('removes the repeated correct-age label from settled and landed reveals',()=>{expect(revealAgeLabel({settled:true})).toBe('');expect(revealAgeLabel({correctReached:true})).toBe('');expect(revealAgeLabel({correctReached:true,overshooting:true})).toBe('HIGH GUESSES')})
 })
