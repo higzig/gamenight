@@ -57,3 +57,18 @@ export function differencePresentation(signedDifference) {
   if(value===0)return {short:'EXACT',long:'EXACT!'}
   return {short:value>0?`+${value}`:`${value}`,long:`${Math.abs(value)} YEAR${Math.abs(value)===1?'':'S'} ${value>0?'HIGH':'LOW'}`}
 }
+
+export function distanceDirection(signedDifference) {
+  const value=Number(signedDifference)
+  return value===0?'exact':value<0?'right':'left'
+}
+
+export function resultPointsLabel(points) {
+  const value=Number(points)||0
+  return value>0?`+${value}`:'0 PTS'
+}
+
+export function revealLayout(teamCount) {
+  const count=Math.max(0,Number(teamCount)||0)
+  return {count,columns:count<=2?2:count<=4?4:count<=6?3:4,dense:count>4}
+}

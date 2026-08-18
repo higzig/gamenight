@@ -23,7 +23,7 @@ select lives_ok($$select public.join_event('MASC01','Frogs','frog')$$,'Team clai
 select is(public.get_team_room_state('MASC01')->'team'->>'mascot_id','frog','Team hydration restores own mascot');
 
 select set_config('request.jwt.claims','{"sub":"28000000-0000-0000-0000-000000000002","role":"authenticated","is_anonymous":true}',true);
-select throws_ok($$select public.join_event('MASC01','Other Frogs','frog')$$,'23505','that mascot was just taken','same-event duplicate mascot is rejected');
+select throws_ok($$select public.join_event('MASC01','Other Frogs','frog')$$,'23505','That mascot was just taken. Pick another one.','same-event duplicate mascot is rejected');
 select lives_ok($$select public.join_event('MASC01','Robots','robot')$$,'second Team claims another mascot');
 select throws_ok($$select public.set_team_mascot('de000000-0000-0000-0000-000000000004','fox')$$,'42501','team ownership required','Team cannot change another Team mascot');
 
@@ -44,7 +44,7 @@ select ok(public.get_public_room_state('MASC01')::text not like '%Frogs%' and pu
 
 select set_config('request.jwt.claims','{"sub":"18000000-0000-0000-0000-000000000001","role":"authenticated","is_anonymous":false}',true);
 select lives_ok($$select public.reveal_question('ae000000-0000-0000-0000-000000000001')$$,'Host reveals and scores');
-select is(public.get_public_room_state('MASC01')->'guess_markers'->0,jsonb_build_object('team_id',(select id from public.teams where name='Frogs'),'team_name','Frogs','mascot_id','frog','guess',24,'signed_difference',-2,'points',6),'reveal exposes only shaped final Team result');
+select is(public.get_public_room_state('MASC01')->'guess_markers'->0,jsonb_build_object('team_name','Frogs','mascot_id','frog','guess',24,'signed_difference',-2,'points',6),'reveal exposes only shaped final Team result without identifiers');
 
 select * from finish();
 rollback;

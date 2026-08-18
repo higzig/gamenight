@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it, vi } from 'vitest'
-import { animateAge, audienceMode, buildAgeScale, differencePresentation, revealOrder, scatterGuessMarkers, suspenseSeconds, teamJoinUrl } from './audience-view.js'
+import { animateAge, audienceMode, buildAgeScale, differencePresentation, distanceDirection, resultPointsLabel, revealLayout, revealOrder, scatterGuessMarkers, suspenseSeconds, teamJoinUrl } from './audience-view.js'
 
 describe('Phase 2C audience experience', () => {
   it('builds the QR target from the deployed origin and room query', () => {
@@ -30,4 +30,8 @@ describe('Phase 2C audience experience', () => {
   it('keeps submitted marker positions stable without Team names',()=>{const markers=[{mascot_id:'frog',guess:38}];expect(scatterGuessMarkers(markers)).toEqual(scatterGuessMarkers(markers));expect(scatterGuessMarkers(markers)[0]).not.toHaveProperty('team_name')})
   it('orders scale markers and stacks same-age guesses into lanes',()=>{const scale=buildAgeScale([{guess:52,team_name:'B'},{guess:43,team_name:'A'},{guess:43,team_name:'C'}],47);expect(scale.markers.map(x=>x.guess)).toEqual([43,43,52]);expect(scale.markers.slice(0,2).map(x=>x.lane)).toEqual([0,1]);expect(scale.answerPosition).toBeGreaterThan(scale.markers[0].position)})
   it('describes below, above, and exact differences correctly',()=>{expect(differencePresentation(-5)).toEqual({short:'-5',long:'5 YEARS LOW'});expect(differencePresentation(5)).toEqual({short:'+5',long:'5 YEARS HIGH'});expect(differencePresentation(0).long).toBe('EXACT!')})
+  it('sends low guesses rightward, high guesses leftward, and exact guesses nowhere',()=>{expect(distanceDirection(-17)).toBe('right');expect(distanceDirection(6)).toBe('left');expect(distanceDirection(0)).toBe('exact')})
+  it('renders zero points neutrally and positive awards clearly',()=>{expect(resultPointsLabel(0)).toBe('0 PTS');expect(resultPointsLabel(6)).toBe('+6')})
+  it.each([2,4,6,8])('provides a readable final-card grid for %i Teams',count=>{const layout=revealLayout(count);expect(layout.columns).toBeGreaterThanOrEqual(2);expect(layout.columns).toBeLessThanOrEqual(4);expect(layout.count).toBe(count)})
+  it('keeps scale positions padded from the viewport edges',()=>{const scale=buildAgeScale([{guess:20},{guess:80}],49);expect(scale.markers[0].position).toBeGreaterThan(0);expect(scale.markers[1].position).toBeLessThan(100)})
 })
