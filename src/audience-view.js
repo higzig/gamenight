@@ -87,6 +87,11 @@ export function lockCountParts(submitted,total) {
   return {submitted:String(safe(submitted)),total:String(safe(total)),label:'TEAMS LOCKED IN'}
 }
 
+export function lockCountMarkup(submitted,total,{secondary=false,pop=false}={}) {
+  const count=lockCountParts(submitted,total)
+  return `<div class="lock-count-block${secondary?' secondary':''}${pop?' count-pop':''}" data-lock-count><strong class="locked-count"><span>${count.submitted}</span><small> / ${count.total}</small></strong><span class="lock-count-label">${count.label}</span></div>`
+}
+
 export function revealAgeLabel({settled=false,correctReached=false,overshooting=false}={}) {
   if(settled||correctReached)return overshooting?'HIGH GUESSES':''
   return 'COUNTING UP'

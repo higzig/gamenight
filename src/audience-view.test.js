@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it, vi } from 'vitest'
-import { animateAge,animateCountUp,answeringPresentation,audienceMode,buildAgeScale,buildCountUpTrack,differencePresentation,distanceDirection,lockCountChange,lockCountParts,resultPointsLabel,revealAgeLabel,revealFrame,revealLayout,revealOrder,scatterGuessMarkers,suspenseSeconds,teamJoinUrl } from './audience-view.js'
+import { animateAge,animateCountUp,answeringPresentation,audienceMode,buildAgeScale,buildCountUpTrack,differencePresentation,distanceDirection,lockCountChange,lockCountMarkup,lockCountParts,resultPointsLabel,revealAgeLabel,revealFrame,revealLayout,revealOrder,scatterGuessMarkers,suspenseSeconds,teamJoinUrl } from './audience-view.js'
 
 describe('Phase 2C audience experience', () => {
   it('builds the QR target from the deployed origin and room query', () => {
@@ -44,4 +44,7 @@ describe('Phase 2C audience experience', () => {
   it.each([[0,2,'0','2'],[1,2,'1','2'],[2,2,'2','2'],[9,10,'9','10'],[10,10,'10','10']])('formats %i / %i without undefined or layout-dependent text', (submitted,total,current,denominator)=>expect(lockCountParts(submitted,total)).toEqual({submitted:current,total:denominator,label:'TEAMS LOCKED IN'}))
   it('defaults missing lock counts to neutral zeroes',()=>expect(lockCountParts(undefined,undefined)).toEqual({submitted:'0',total:'0',label:'TEAMS LOCKED IN'}))
   it('removes the repeated correct-age label from settled and landed reveals',()=>{expect(revealAgeLabel({settled:true})).toBe('');expect(revealAgeLabel({correctReached:true})).toBe('');expect(revealAgeLabel({correctReached:true,overshooting:true})).toBe('HIGH GUESSES')})
+  it('shares the normalized lock-count renderer between active and suspense views',()=>{const active=lockCountMarkup(2,2),suspense=lockCountMarkup(2,2,{secondary:true});expect(active).toContain('class="lock-count-block"');expect(suspense).toContain('class="lock-count-block secondary"');expect(suspense).not.toContain('locked-total');expect(active).toContain('2</span><small> / 2')})
+  it.each([[2,2],[9,10],[10,10]])('keeps suspense count %i / %i in stable shared markup',(submitted,total)=>{const html=lockCountMarkup(submitted,total,{secondary:true});expect(html).toContain(`<span>${submitted}</span>`);expect(html).toContain(`<small> / ${total}</small>`);expect(html).toContain('TEAMS LOCKED IN')})
+  it('keeps suspense secondary while active count retains pop support',()=>{expect(lockCountMarkup(1,2,{secondary:true})).not.toContain('count-pop');expect(lockCountMarkup(1,2,{pop:true})).toContain('count-pop')})
 })
