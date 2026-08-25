@@ -59,3 +59,6 @@ export function secondsRemaining(state, now = Date.now()) {
   if (!Number.isFinite(deadline) || !Number.isFinite(serverNow)) return 0
   return Math.max(0, Math.ceil((deadline - serverNow - (now - hydratedAt)) / 1000))
 }
+
+export function shouldPollTeamState(state){if(!state?.team||state.event?.status==='ended'||state.event?.status==='leaderboard')return false;const phase=state.perfect_lie?.round?.phase;return ['lobby','ready','round_complete'].includes(state.event?.status)||['setup','ready','writing','voting','reveal','question_complete','category_transition'].includes(phase)}
+export function teamRealtimeRecovery(status){if(status==='SUBSCRIBED')return'hydrate';if(['TIMED_OUT','CHANNEL_ERROR','CLOSED'].includes(status))return'resubscribe';return'none'}

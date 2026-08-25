@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { joinTeam,normalizeRoom, ROOM_PATTERN,setTeamMascot } from './team-service.js'
+import { joinTeam,normalizeRoom, ROOM_PATTERN,secondsRemaining,setTeamMascot,shouldPollTeamState,teamRealtimeRecovery } from './team-service.js'
 
 describe('room parsing', () => {
   it('normalizes a room query to uppercase', () => {
@@ -13,4 +13,7 @@ describe('room parsing', () => {
   })
   it('joins with the selected mascot',async()=>{const rpc=vi.fn().mockResolvedValue({data:{},error:null});rpc.mockResolvedValueOnce({data:{},error:null}).mockResolvedValueOnce({data:{team:{mascot_id:'frog'}},error:null});await joinTeam({rpc},'ABC123','Team Frog','frog');expect(rpc).toHaveBeenNthCalledWith(1,'join_event',{p_room_code:'ABC123',p_team_name:'Team Frog',p_mascot_id:'frog'})})
   it('changes only the owned Team mascot through its RPC',async()=>{const rpc=vi.fn().mockResolvedValue({data:{mascot_id:'robot'},error:null});await setTeamMascot({rpc},'t1','robot');expect(rpc).toHaveBeenCalledWith('set_team_mascot',{p_team_id:'t1',p_mascot_id:'robot'})})
+  it('rehydrates on subscription and reconnects failed channels',()=>{expect(teamRealtimeRecovery('SUBSCRIBED')).toBe('hydrate');expect(teamRealtimeRecovery('TIMED_OUT')).toBe('resubscribe');expect(teamRealtimeRecovery('CHANNEL_ERROR')).toBe('resubscribe');expect(teamRealtimeRecovery('CLOSED')).toBe('resubscribe')})
+  it('uses fallback recovery while waiting or playing Perfect Lie',()=>{expect(shouldPollTeamState({team:{id:'t1'},event:{status:'ready'}})).toBe(true);expect(shouldPollTeamState({team:{id:'t1'},event:{status:'question'},perfect_lie:{round:{phase:'writing'}}})).toBe(true);expect(shouldPollTeamState({team:{id:'t1'},event:{status:'leaderboard'}})).toBe(false)})
+  it('restores timer from authoritative server time without restarting',()=>{const state={event:{question_deadline_at:'2026-08-19T12:00:20Z'},server_now:'2026-08-19T12:00:10Z',_hydratedAt:1000};expect(secondsRemaining(state,4000)).toBe(7);expect(secondsRemaining(state,12000)).toBe(0)})
 })
