@@ -1,4 +1,5 @@
 import { classifyEvents, formatEventDate, humanEventStatus, localCalendarDate } from './event-chooser.js'
+import { realtimeRecovery, shouldAcceptSnapshot, shouldPollEvent, stateVersion } from './state-sync.js'
 
 export function createAdminApplication({
   client,
@@ -15,6 +16,11 @@ export function createAdminApplication({
   let activeChannel = null
   let legacyLoaded = false
   let createPending = false
+  let hydratePromise = null
+  let hydrateQueued = false
+  let acceptedVersion = -1
+  let recoveryTimer = null
+  let resubscribeTimer = null
 
   const esc = (value = '') => String(value).replace(/[&<>'"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' })[c])
 
@@ -106,6 +112,7 @@ export function createAdminApplication({
   async function openEvent(eventId) {
     const snapshot = await services.hydrateHostEvent(client, eventId)
     activeEventId = eventId
+    acceptedVersion = stateVersion(snapshot)
     win.gameNightRemoteSession = snapshot
     win.gameNightSupabaseActions = {
       saveGuessAgeRound: (title, celebrities) => services.saveGuessAgeRound(client, eventId, title, celebrities).then(refreshActiveEvent),
@@ -152,25 +159,41 @@ export function createAdminApplication({
 
   async function refreshActiveEvent() {
     if (!activeEventId) return
-    const snapshot = await services.hydrateHostEvent(client, activeEventId)
-    win.gameNightRemoteSession = snapshot
-    win.dispatchEvent(new CustomEvent('game-night-remote-state', { detail: snapshot }))
+    if(hydratePromise){hydrateQueued=true;return hydratePromise}
+    const request=(async()=>{
+      const snapshot=await services.hydrateHostEvent(client,activeEventId)
+      if(!shouldAcceptSnapshot(snapshot,acceptedVersion))return win.gameNightRemoteSession
+      acceptedVersion=stateVersion(snapshot)
+      win.gameNightRemoteSession=snapshot
+      win.dispatchEvent(new CustomEvent('game-night-remote-state',{detail:snapshot}))
+      scheduleRecovery()
+      return snapshot
+    })()
+    hydratePromise=request
+    try{return await request}finally{if(hydratePromise===request)hydratePromise=null;if(hydrateQueued){hydrateQueued=false;queueMicrotask(()=>refreshActiveEvent().catch(console.error))}}
   }
 
+  function scheduleRecovery(){clearTimeout(recoveryTimer);if(!shouldPollEvent(win.gameNightRemoteSession,{hidden:doc.hidden}))return;recoveryTimer=setTimeout(()=>refreshActiveEvent().catch(console.error),3500)}
+
   async function subscribeToEvent(eventId) {
+    clearTimeout(resubscribeTimer)
     if (activeChannel) await client.removeChannel(activeChannel)
-    activeChannel = client.channel(`event:${eventId}:public`, { config: { private: true } })
+    const next = client.channel(`event:${eventId}:public`, { config: { private: true } })
       .on('broadcast', { event: 'state_changed' }, refreshActiveEvent)
-      .subscribe(status => { if (status === 'SUBSCRIBED') refreshActiveEvent().catch(console.error) })
+    activeChannel=next
+    next.subscribe(status => {if(activeChannel!==next)return;const action=realtimeRecovery(status);if(action==='hydrate')refreshActiveEvent().catch(console.error);if(action==='resubscribe')resubscribeTimer=setTimeout(()=>subscribeToEvent(eventId).catch(console.error),1500)})
+    scheduleRecovery()
   }
 
   async function backToEvents() {
+    clearTimeout(recoveryTimer);clearTimeout(resubscribeTimer)
     if (activeChannel) await client.removeChannel(activeChannel)
     activeChannel = null; activeEventId = null; win.gameNightRemoteSession = null; win.gameNightSupabaseActions = null
     await renderEventChooser()
   }
 
   async function logout() {
+    clearTimeout(recoveryTimer);clearTimeout(resubscribeTimer)
     if (activeChannel) await client.removeChannel(activeChannel)
     activeChannel = null; activeEventId = null; win.gameNightRemoteSession = null; win.gameNightSupabaseActions = null
     await client.auth.signOut(); renderSignIn()
@@ -186,6 +209,10 @@ export function createAdminApplication({
     }
     await renderEventChooser()
   }
+
+  doc.addEventListener('visibilitychange',()=>{if(!doc.hidden&&activeEventId)refreshActiveEvent().catch(console.error)})
+  win.addEventListener('online',()=>{if(activeEventId){refreshActiveEvent().catch(console.error);subscribeToEvent(activeEventId).catch(console.error)}})
+  win.addEventListener('focus',()=>{if(activeEventId)refreshActiveEvent().catch(console.error)})
 
   return { init, openEvent, backToEvents, logout, refreshActiveEvent, getState: () => state }
 }

@@ -50,7 +50,6 @@ export async function submitGuess(client, teamId, questionId, guess) {
 export async function submitPerfectLieAnswer(client,teamId,questionId,answer){const{data,error}=await client.rpc('submit_perfect_lie_answer',{p_team_id:teamId,p_question_id:questionId,p_answer:answer});if(error)throw error;return data}
 export async function submitPerfectLieLie(client,teamId,questionId,lie){const{error}=await client.rpc('submit_perfect_lie_lie',{p_team_id:teamId,p_question_id:questionId,p_lie:lie});if(error)throw error}
 export async function submitPerfectLieVote(client,teamId,questionId,optionId){const{error}=await client.rpc('submit_perfect_lie_vote',{p_team_id:teamId,p_question_id:questionId,p_option_id:optionId});if(error)throw error}
-export async function beginPerfectLieLieAfterTimeout(client,teamId,questionId){const{error}=await client.rpc('begin_perfect_lie_lie_after_timeout',{p_team_id:teamId,p_question_id:questionId});if(error)throw error}
 
 export function secondsRemaining(state, now = Date.now()) {
   const deadline = Date.parse(state?.event?.question_deadline_at || '')
@@ -60,5 +59,5 @@ export function secondsRemaining(state, now = Date.now()) {
   return Math.max(0, Math.ceil((deadline - serverNow - (now - hydratedAt)) / 1000))
 }
 
-export function shouldPollTeamState(state){if(!state?.team||state.event?.status==='ended'||state.event?.status==='leaderboard')return false;const phase=state.perfect_lie?.round?.phase;return ['lobby','ready','round_complete'].includes(state.event?.status)||['setup','ready','writing','voting','reveal','question_complete','category_transition'].includes(phase)}
+export function shouldPollTeamState(state,{hidden=false}={}){return Boolean(state?.team&&!hidden&&state.event?.status!=='ended')}
 export function teamRealtimeRecovery(status){if(status==='SUBSCRIBED')return'hydrate';if(['TIMED_OUT','CHANNEL_ERROR','CLOSED'].includes(status))return'resubscribe';return'none'}
