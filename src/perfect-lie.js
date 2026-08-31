@@ -14,3 +14,10 @@ export const canPreparePerfectLieQuestion=phase=>['ready','category_transition']
 export function perfectLieMissingConfirmation(kind,complete,total){const missing=Math.max(0,Number(total||0)-Number(complete||0));if(!missing)return'';if(kind==='lies')return`${missing} Team${missing===1?'':'s'} still ${missing===1?'hasn’t':'haven’t'} submitted a lie. Close submissions anyway?`;return`${missing} Team${missing===1?'':'s'} still ${missing===1?'hasn’t':'haven’t'} voted. Start the reveal anyway?`}
 export const perfectLieRevealProgress=(index,total,complete=false)=>`REVEAL ${Number(index||0)} OF ${Number(total||0)}${complete?' · COMPLETE':''}`
 export function mergePerfectLieEditorSnapshot(local,remote,{dirty=false}={}){if(dirty)return{draft:local,remoteChanged:true};return{draft:structuredClone(remote),remoteChanged:false}}
+export function perfectLieHostControlModel(game,browseQuestionId=''){
+  const questions=(game?.categories||[]).flatMap(category=>(category.questions||[]).map(question=>({...question,category:category.title})))
+  const authoritative=questions.find(question=>question.id===game?.round?.active_question_id)||null
+  const browsed=questions.find(question=>question.id===browseQuestionId)||authoritative||null
+  const canPrepare=canPreparePerfectLieQuestion(game?.round?.phase)
+  return{questions,authoritative,browsed,browseQuestionId:browsed?.id||'',canPrepare,canStart:canPrepare&&Boolean(authoritative),canSubmitPreparation:canPrepare&&Boolean(browsed)&&browsed.id!==authoritative?.id}
+}
