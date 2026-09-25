@@ -14,7 +14,7 @@ export function joinAvailability({name='',mascotId=null,takenMascotIds=[],roster
 
 export function friendlyJoinError(error) {
   const message=String(error?.message||'').toLowerCase()
-  if(message.includes('team name')&&message.includes('taken'))return 'That Team name is already taken.'
+  if(message.includes('team name')&&message.includes('taken'))return 'That team already has a Team Captain. Use the original Captain’s phone and browser to reconnect.'
   if(message.includes('mascot')&&message.includes('taken'))return 'That mascot was just taken. Pick another one.'
   return 'Unable to join that room. Check the code or ask the Host.'
 }

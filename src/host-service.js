@@ -134,3 +134,6 @@ export const closePerfectLieWriting=(client,eventId)=>rpc(client,'close_perfect_
 export const startPerfectLieReveal=(client,eventId)=>rpc(client,'start_perfect_lie_reveal',{p_event_id:eventId})
 export const advancePerfectLieReveal=(client,eventId)=>rpc(client,'advance_perfect_lie_reveal',{p_event_id:eventId})
 export const advancePerfectLieQuestion=(client,eventId,questionId=null)=>rpc(client,'advance_perfect_lie_question',{p_event_id:eventId,p_question_id:questionId})
+
+export const setupNoContext=(client,eventId,prompts)=>rpc(client,'setup_no_context',{p_event_id:eventId,p_prompts:prompts})
+export const controlNoContext=(client,eventId,playId,action)=>rpc(client,'no_context_control',{p_event_id:eventId,p_play_id:playId,p_action:action})

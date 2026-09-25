@@ -1,3 +1,5 @@
+import { NO_CONTEXT_TEST_PROMPTS } from './src/no-context-content.js';
+import { noContextStage,noContextCloseWarning,noContextSeconds,updateNoContextClock } from './src/no-context.js';
 import { moveItem, runConfirmed } from './src/admin-controls.js';
 import { applyCelebrityRecord, createNewCelebrityDraft, dobInputValue, lineupValidationError, selectCelebrityMatch, shouldTryWikipedia, updateCelebrityDob, wikidataDobFromClaims } from './src/celebrity-library.js';
 import { activeIBetYouGroup, adjustBid, iBetYouGroups, iBetYouSecondsRemaining, initialProposedBid, teamName, validateIBetYouChallenge, validateIBetYouCommit } from './src/i-bet-you.js';
@@ -13,6 +15,7 @@ const games = {
   guessAge: {name:'Guess the Age', icon:'🎂', desc:'15-second celebrity age guesses', ready:true},
   iBetYou: {name:'I Bet You', icon:'🎤', desc:'Hosted live bidding and stage challenge', ready:true},
   perfectLie:{name:TABLE_OF_LIES_NAME,icon:'🃏',desc:'One answer is true. The rest were made up at the table.',ready:true},
+  noContext:{name:'No Context',icon:'💬',desc:'Five visual prompts. Anonymous responses and team voting.',ready:true},
   future: {name:'Future Game', icon:'✦', desc:'Placeholder for a new round', ready:false}
 };
 
@@ -60,6 +63,7 @@ function load(){
   }catch{}
   return defaultState();
 }
+let noContextPending=false;
 let state=load(); let editingRoundId=null; let liveTicker=null; const iBetYouDrafts=new Map();
 function save(show=true){localStorage.setItem(STORE_KEY,JSON.stringify(state));broadcast();if(show)toast('Saved locally')}
 function broadcast(){channel?.postMessage({type:'state',state});}
@@ -80,6 +84,7 @@ function remotePerfectLie(){return remoteSession()?.perfect_lie||null}
 function storageBase(){return `${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/public/celebrity-images`}
 function syncRemoteGuessRound(){const remote=remoteGuessRound();if(!remote)return;let local=state.rounds.find(r=>r.type==='guessAge');if(!local){local={id:'remote-guess-age',type:'guessAge',title:remote.title,settings:{timer:15,points:'bands',celebrities:[]}};state.rounds.unshift(local)}local.title=remote.title;local.settings.timer=15;local.settings.celebrities=(remote.questions||[]).map(q=>({id:q.celebrity_id,questionId:q.id,name:q.celebrity_name,dob:q.date_of_birth,imageKind:q.image_kind,imagePath:q.image_path,image:q.image_kind==='storage'&&q.image_path?`${storageBase()}/${q.image_path}`:(q.external_image_url||''),imageSourceKind:q.image_source,sourceReference:q.source_reference,imageSource:q.image_source?`Reusable · ${q.image_source}`:'',imageSourceUrl:q.external_image_url||'',libraryStatus:q.celebrity_id?'existing':'new'}))}
 let perfectLieEditorDirty=false,perfectLieRemoteChanged=false,perfectLieHostPending=false,perfectLieBrowseQuestionId=''
+function syncRemoteNoContext(){if(remoteSession()?.no_context&&!state.rounds.some(r=>r.type==='noContext'))state.rounds.push({id:'remote-no-context',type:'noContext',title:'No Context',settings:{}})}
 function syncRemotePerfectLie(){const game=remotePerfectLie();if(!game?.round)return;let local=state.rounds.find(r=>r.type==='perfectLie');if(!local){local={id:'remote-perfect-lie',type:'perfectLie',title:perfectLieDisplayTitle(game.round.title||TABLE_OF_LIES_NAME),settings:{categories:[]}};state.rounds.push(local)}if(perfectLieEditorDirty){perfectLieRemoteChanged=true;return}local.title=perfectLieDisplayTitle(game.round.title||TABLE_OF_LIES_NAME);if(game.categories?.length)local.settings.categories=structuredClone(game.categories);perfectLieRemoteChanged=false}
 function remoteQuestion(){const s=remoteSession();return remoteGuessRound()?.questions?.find(q=>q.id===s?.event?.active_question_id)||remoteGuessRound()?.questions?.[0]||null}
 function remoteTimeLeft(){const s=remoteSession();if(!s?.event?.question_deadline_at)return 0;const serverAtHydration=new Date(s.server_now).getTime(),deadline=new Date(s.event.question_deadline_at).getTime(),elapsed=Date.now()-(s._hydratedAt||Date.now());return Math.max(0,Math.ceil((deadline-serverAtHydration-elapsed)/1000))}
@@ -97,7 +102,7 @@ function bindEventFields(){
     state.event={...state.event,name:remote.name,venue:remote.venue,date:remote.event_date,roomCode:remote.room_code};
     $('#eventName').value=remote.name;$('#venueName').value=remote.venue;$('#eventDate').value=remote.event_date;$('#eventTitle').textContent=remote.name;$('#roomCode').textContent=remote.room_code;
     ['eventName','venueName','eventDate'].forEach(id=>{$('#'+id).disabled=true;$('#'+id).title='Database-backed event details are read-only'});
-    $('#connectedCount').textContent=`${remoteTeams().length} teams joined`;$('#eventStatusLine').textContent=`${remote.room_code} · ${remoteTeams().length} Teams · ${remote.status}`;
+    $('#connectedCount').textContent=`${remoteTeams().length} teams registered`;$('#eventStatusLine').textContent=`${remote.room_code} · ${remoteTeams().length} Teams · ${remote.status}`;
     return;
   }
   $('#eventName').value=state.event.name;$('#venueName').value=state.event.venue;$('#eventDate').value=state.event.date;$('#eventTitle').textContent=state.event.name;$('#roomCode').textContent=state.event.roomCode;$('#connectedCount').textContent=`${state.teams.length} local test teams`;
@@ -106,6 +111,7 @@ function bindEventFields(){
 function roundSummary(r){
   if(r.type==='guessAge') return `${r.settings.celebrities?.length||0} celebrities · ${r.settings.timer||15}s answers`;
   if(r.type==='iBetYou'){const count=remoteSession()?.i_bet_you?.groups?.length;return `${count?`${count} persisted group${count===1?'':'s'}`:'Groups scale with joined Teams'} · unique categories · ${r.settings.winPoints||5} points to winner`;}
+  if(r.type==='noContext')return '5 prompts · 45s responses · 30s votes · 5/3/1 points';
   if(r.type==='perfectLie')return `${r.settings.categories?.length||0} categories · ${(r.settings.categories||[]).reduce((sum,c)=>sum+(c.questions?.length||0),0)} questions`;
   return 'Game not chosen yet';
 }
@@ -114,13 +120,14 @@ function renderRounds(){
   document.querySelectorAll('.edit-round').forEach(b=>b.onclick=()=>openDrawer(b.closest('.round-card').dataset.id));
   document.querySelectorAll('.move-up').forEach(b=>b.onclick=()=>moveRound(b.closest('.round-card').dataset.id,-1));
   document.querySelectorAll('.move-down').forEach(b=>b.onclick=()=>moveRound(b.closest('.round-card').dataset.id,1));
-  document.querySelectorAll('.open-round').forEach(b=>b.onclick=()=>{const round=state.rounds.find(x=>x.id===b.closest('.round-card').dataset.id),gameType=round?.type==='guessAge'?'guess_age':round?.type==='iBetYou'?'i_bet_you':round?.type==='perfectLie'?'perfect_lie':null,target=controlRounds().find(x=>x.game_type===gameType);if(target)selectControlRound(target.id)});
+  document.querySelectorAll('.open-round').forEach(b=>b.onclick=()=>{const round=state.rounds.find(x=>x.id===b.closest('.round-card').dataset.id),gameType=round?.type==='guessAge'?'guess_age':round?.type==='iBetYou'?'i_bet_you':round?.type==='perfectLie'?'perfect_lie':round?.type==='noContext'?'no_context':null,target=controlRounds().find(x=>x.game_type===gameType);if(target)selectControlRound(target.id)});
 }
 function moveRound(id,delta){const i=state.rounds.findIndex(r=>r.id===id),j=i+delta;if(j<0||j>=state.rounds.length)return;[state.rounds[i],state.rounds[j]]=[state.rounds[j],state.rounds[i]];renderRounds();save(false)}
 function openDrawer(id){editingRoundId=id;const r=state.rounds.find(x=>x.id===id);$('#drawerTitle').textContent=r.type==='perfectLie'?perfectLieDisplayTitle(r.title||TABLE_OF_LIES_NAME):r.title||games[r.type].name;renderDrawer(r);if(r.type==='perfectLie'){$('#drawerBody').addEventListener('input',()=>{perfectLieEditorDirty=true});if(perfectLieRemoteChanged)toast('Remote game state changed. Your unsaved draft is preserved.')}document.getElementById('drawerSync')?.remove();if(remoteSession()&&['guessAge','perfectLie'].includes(r.type)){const button=document.createElement('button');button.id='drawerSync';button.className='btn secondary';button.textContent=r.type==='perfectLie'?`Sync ${TABLE_OF_LIES_NAME}`:'Sync Guess the Age';button.onclick=()=>r.type==='perfectLie'?syncPerfectLie(r):$('#saveEvent').click();$('#doneRound').before(button)}$('#roundDrawer').classList.add('open');$('#drawerBackdrop').classList.add('open')}
 function closeDrawer(){editingRoundId=null;$('#roundDrawer').classList.remove('open');$('#drawerBackdrop').classList.remove('open');renderRounds();renderTeams();renderLeaderboard();renderLiveControl();save(false)}
 function renderDrawer(r){
   if(r.type==='guessAge') return renderGuessAgeEditor(r);
+  if(r.type==='noContext'){$('#drawerBody').innerHTML='<p>Five temporary image prompts. Captains submit and vote; the Host reveals the podium.</p><button class="btn primary" id="openNoContext">Open No Context controls</button>';$('#openNoContext').onclick=()=>{closeDrawer();selectControlRound(controlRounds().find(x=>x.game_type==='no_context').id)};return}
   if(r.type==='iBetYou') return renderIBetEditor(r);
   if(r.type==='perfectLie')return renderPerfectLieEditor(r);
   $('#drawerBody').innerHTML=`<div class="field"><label>Round title</label><input id="roundTitleInput" value="${esc(r.title)}"></div><div class="empty-state" style="margin-top:18px"><strong>This round is intentionally a placeholder.</strong><p class="hint">When we decide the next game, its own editor will live here while still using the same event, teams and leaderboard.</p></div>`;
@@ -212,8 +219,8 @@ function renderIBetEditor(r){
 }
 function renderTeams(){
   const joined=remoteTeams();
-  $('#connectedCount').textContent=remoteSession()?`${joined.length} teams joined`:`${state.teams.length} local test teams`;
-  if(remoteSession()){$('#teamsSummary').textContent=`${joined.length} Team${joined.length===1?'':'s'} joined`;$('#addTeam').hidden=true;$('#teamsTable').innerHTML=`<div class="host-team-list">${joined.map(t=>`<div class="host-team"><span>${mascotEmoji(t.mascot_id)}</span><strong>${esc(t.name)}</strong><time>Joined ${new Date(t.joined_at).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</time></div>`).join('')||'<div class="empty-state">Waiting for Teams to join…</div>'}</div>`;return}
+  $('#connectedCount').textContent=remoteSession()?`${joined.length} teams registered`:`${state.teams.length} local test teams`;
+  if(remoteSession()){$('#teamsSummary').textContent=`${joined.length} Team${joined.length===1?'':'s'} registered · One Captain per team · Live connections are not tracked`;$('#addTeam').hidden=true;$('#teamsTable').innerHTML=`<div class="host-team-list">${joined.map(t=>`<div class="host-team"><span>${mascotEmoji(t.mascot_id)}</span><strong>${esc(t.name)}</strong><time>Joined ${new Date(t.joined_at).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</time></div>`).join('')||'<div class="empty-state">Waiting for Teams to join…</div>'}</div>`;return}
   const authoritative=remoteSession()?`<div class="remote-teams"><h3>Supabase-joined Teams</h3><p>Authoritative room membership and mascot identity.</p><table><thead><tr><th>Team</th><th>Status</th><th>Joined</th></tr></thead><tbody>${joined.map(t=>`<tr><td><strong><span class="mascot-inline">${mascotEmoji(t.mascot_id)}</span> ${esc(t.name)}</strong></td><td><span class="remote-team-state">${esc(t.status)}</span></td><td>${new Date(t.joined_at).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</td></tr>`).join('')||'<tr><td colspan="3">Waiting for Teams to join…</td></tr>'}</tbody></table></div>`:'';
   $('#teamsTable').innerHTML=`${authoritative}<div class="prototype-teams"><h3>Local gameplay test Teams</h3><p>Browser-only prototype data. Kept separate until Guess the Age moves to Supabase.</p><table><thead><tr><th>Team</th><th>Local points</th><th></th></tr></thead><tbody>${state.teams.map(t=>`<tr><td><input class="score-input team-name" style="width:220px" data-id="${t.id}" value="${esc(t.name)}"></td><td><input class="score-input team-score" data-id="${t.id}" type="number" value="${t.total||0}"></td><td><button class="mini-btn remove-team" data-id="${t.id}">Remove</button></td></tr>`).join('')}</tbody></table></div>`;
   document.querySelectorAll('.team-name').forEach(x=>x.oninput=e=>{state.teams.find(t=>t.id==e.target.dataset.id).name=e.target.value;save(false)});document.querySelectorAll('.team-score').forEach(x=>x.oninput=e=>{state.teams.find(t=>t.id==e.target.dataset.id).total=Number(e.target.value);renderLeaderboard();save(false)});document.querySelectorAll('.remove-team').forEach(x=>x.onclick=e=>{state.teams=state.teams.filter(t=>t.id!=e.target.dataset.id);renderTeams();renderLeaderboard();renderLiveControl();save(false)})
@@ -273,8 +280,9 @@ function renderLiveControl(){
 }
 function renderRemoteLeaderboard(){const board=leaderboardRows(remoteSession()?.leaderboard||[]);$('#leaderboardTable').innerHTML=`<div class="host-leaderboard">${board.map(t=>`<div class="leaderboard-row"><span class="leader-place">${t.place<=3?['🥇','🥈','🥉'][t.place-1]:t.place}</span><strong>${mascotEmoji(t.mascot_id)} ${esc(t.name)}</strong><b>${t.points} pts</b></div>`).join('')||'<div class="empty-state">No scores yet</div>'}</div>`}
 function renderRemoteLiveControl(){
+  clearInterval(liveTicker)
   const s=remoteSession(),r=remoteGuessRound(),questions=r?.questions||[],event=s.event,q=remoteQuestion(),status=event.status,left=remoteTimeLeft(),submitted=new Map((s.submissions||[]).filter(x=>x.guess_integer!=null).map(x=>[x.team_id,x])),awards=new Map((s.awards||[]).map(x=>[x.team_id,x]));
-  const selected=selectedControlRound();if(selected?.game_type==='perfect_lie')return renderRemotePerfectLieControl();if(selected?.game_type==='i_bet_you')return s.i_bet_you?renderRemoteIBetControl():renderRemoteIBetSetup();if(selected&&!selected.configured){$('#liveControl').innerHTML=roundNavigator()+'<div class="empty-state">This round needs setup before it can be controlled.</div>';bindRoundNavigator();return}
+  const selected=selectedControlRound();if(selected?.game_type==='no_context')return renderRemoteNoContext();if(selected?.game_type==='perfect_lie')return renderRemotePerfectLieControl();if(selected?.game_type==='i_bet_you')return s.i_bet_you?renderRemoteIBetControl():renderRemoteIBetSetup();if(selected&&!selected.configured){$('#liveControl').innerHTML=roundNavigator()+'<div class="empty-state">This round needs setup before it can be controlled.</div>';bindRoundNavigator();return}
   const rows=remoteTeams().map(t=>{const sub=submitted.get(t.id),award=awards.get(t.id);return `<tr><td>${mascotEmoji(t.mascot_id)} ${esc(t.name)}</td><td>${sub?.guess_integer??'—'}</td><td>${sub?'<span class="submission done">Locked</span>':'<span class="submission waiting">Waiting</span>'}${award?` · +${award.points}`:''}</td></tr>`}).join('');
   $('#liveControl').innerHTML=`<div class="live-toolbar panel"><div><p class="eyebrow">SUPABASE LIVE EVENT</p><h2>${esc(event.name)}</h2><p class="hint">Authoritative gameplay across physical devices. Room ${esc(event.room_code)}</p></div><div class="top-actions"><button class="btn secondary" id="openAudience">Open audience ↗</button><button class="btn secondary" id="openTeamTest">Open Team ↗</button><button class="btn secondary" id="prepareIBet">Prepare I Bet You</button><button class="btn ghost" id="audienceIdle">Show Join Screen</button><button class="btn ghost" id="returnGame">Return to Game</button></div></div>
   <div class="live-grid"><div class="panel live-main"><div class="panel-heading"><div><p class="label">GUESS THE AGE</p><h2>${esc(r?.title||'Not synced yet')}</h2></div><span class="pill ${status==='question'?'live':'ready'}">${esc(status)}</span></div>
@@ -351,7 +359,7 @@ function addRound(type){const id='r'+Date.now();const base={id,type,title:games[
 function deleteRound(){if(!editingRoundId)return;state.rounds=state.rounds.filter(r=>r.id!==editingRoundId);if(state.live.activeRoundId===editingRoundId)state.live.activeRoundId=state.rounds.find(r=>r.type==='guessAge')?.id||null;closeDrawer()}
 function initNav(){document.querySelectorAll('.nav-item').forEach(b=>b.onclick=()=>{document.querySelectorAll('.nav-item').forEach(x=>x.classList.toggle('active',x===b));document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));$('#view-'+b.dataset.view).classList.add('active');if(b.dataset.view==='live')renderLiveControl()})}
 function init(){
-  syncRemoteGuessRound();syncRemotePerfectLie();bindEventFields();renderRounds();renderTeams();renderLeaderboard();renderLiveControl();initNav();save(false);
+  syncRemoteGuessRound();syncRemotePerfectLie();syncRemoteNoContext();bindEventFields();renderRounds();renderTeams();renderLeaderboard();renderLiveControl();initNav();save(false);
   document.body.classList.toggle('hosted-admin',Boolean(remoteSession()));
   $('#saveEvent').textContent=remoteSession()?'Sync Guess the Age':'Save changes';
   $('#saveEvent').onclick=async()=>{if(remoteSession()){const r=state.rounds.find(x=>x.type==='guessAge');if(!r)return toast('No Guess the Age round');const celebrities=r.settings.celebrities||[],validationError=lineupValidationError(celebrities);if(validationError)return toast(validationError);$('#saveEvent').disabled=true;try{await window.gameNightSupabaseActions.saveGuessAgeRound(r.title,celebrities);toast('Guess the Age synced')}catch(e){console.error(e);toast('Could not sync lineup. Check each celebrity name and date of birth.')}finally{$('#saveEvent').disabled=false}}else{save(true);renderRounds();renderLiveControl()}};
@@ -363,6 +371,28 @@ function init(){
   $('#leaderboardAudience').onclick=()=>remoteSession()?window.gameNightSupabaseActions.setDisplay('leaderboard'):document.querySelector('[data-view="live"]')?.click();
   $('#copyTeamLink').onclick=async()=>{const code=remoteSession()?.event?.room_code;if(!code)return;const url=new URL('team.html',location.href);url.searchParams.set('room',code);try{await navigator.clipboard.writeText(url.href);toast('Team join link copied')}catch{toast(`Room code: ${code}`)}};
   window.addEventListener('storage',e=>{if(e.key===STORE_KEY&&e.newValue){state=migrate(JSON.parse(e.newValue));renderLeaderboard();renderLiveControl()}});
-  window.addEventListener('game-night-remote-state',e=>{e.detail._hydratedAt=Date.now();window.gameNightRemoteSession=e.detail;document.body.classList.add('hosted-admin');syncRemoteGuessRound();syncRemotePerfectLie();bindEventFields();renderRounds();if(editingRoundId){const current=state.rounds.find(r=>r.id===editingRoundId);if(current&&!(current.type==='perfectLie'&&perfectLieEditorDirty))renderDrawer(current)}renderTeams();renderRemoteLeaderboard();renderLiveControl()});
+  window.addEventListener('game-night-remote-state',e=>{e.detail._hydratedAt=Date.now();window.gameNightRemoteSession=e.detail;document.body.classList.add('hosted-admin');syncRemoteGuessRound();syncRemotePerfectLie();syncRemoteNoContext();bindEventFields();renderRounds();if(editingRoundId){const current=state.rounds.find(r=>r.id===editingRoundId);if(current&&!(current.type==='perfectLie'&&perfectLieEditorDirty))renderDrawer(current)}renderTeams();renderRemoteLeaderboard();renderLiveControl()});
 }
 init();
+
+function renderRemoteNoContext(){
+  clearInterval(liveTicker)
+  const snapshot=remoteSession(),game=snapshot.no_context,root=$('#liveControl')
+  root.innerHTML=roundNavigator()+`<div class="host-display-row">${audienceSelector(snapshot.event)}</div>`+(game?noContextStage(snapshot,{host:true}):'<section class="panel nc-host"><h2>No Context</h2><p>Prepare five test image prompts. This preserves your teams and existing scores.</p><button class="btn primary" id="ncSetup">Prepare No Context</button></section>')
+  bindRoundNavigator();bindAudienceSelector()
+  const setup=$('#ncSetup')
+  if(setup){setup.disabled=noContextPending;setup.onclick=async()=>{if(noContextPending)return;noContextPending=true;setup.disabled=true;try{await window.gameNightSupabaseActions.setupNoContext(NO_CONTEXT_TEST_PROMPTS);selectControlRound(remoteSession().no_context.round.id)}catch(error){toast(error.message||'Could not prepare No Context')}finally{noContextPending=false;renderRemoteNoContext()}};return}
+  if(snapshot.event.active_round_id!==game.round.id){root.querySelector('.nc-actions').innerHTML='<button class="btn primary" data-nc-action="resume">Show No Context on stage</button>'}
+  root.querySelectorAll('[data-nc-action]').forEach(button=>{
+    button.disabled ||= noContextPending
+    button.onclick=async()=>{
+      if(noContextPending)return
+      const action=button.dataset.ncAction
+      const warning=action==='restart'?'Restart all five No Context rounds? No Context responses, votes and points will be removed. Teams and other game scores stay.':(action==='close_responses'||action.startsWith('close_voting_'))?noContextCloseWarning(game,noContextSeconds(snapshot)):''
+      if(warning&&!confirm(warning))return
+      noContextPending=true;renderRemoteNoContext()
+      try{await window.gameNightSupabaseActions.controlNoContext(game.play.id,action)}catch(error){toast(error.message||'Could not update No Context');await window.gameNightSupabaseActions.refresh().catch(console.error)}finally{noContextPending=false;renderRemoteNoContext()}
+    }
+  })
+  liveTicker=setInterval(()=>updateNoContextClock(root,remoteSession()),250)
+}

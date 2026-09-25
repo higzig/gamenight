@@ -26,13 +26,21 @@ export async function hydrateJoinRoom(client, roomCode) {
   return data
 }
 
+// Recover membership before creating it, including retries after a lost response.
+// The persisted Supabase session is the controller identity; never mint a new one here.
 export async function joinTeam(client, roomCode, teamName, mascotId) {
+  const existing = await hydrateTeam(client, roomCode)
+  if (existing?.team) return existing
   const { error } = await client.rpc('join_event', {
     p_room_code: roomCode,
     p_team_name: teamName.trim(),
     p_mascot_id: mascotId,
   })
-  if (error) throw error
+  if (error) {
+    const recovered = await hydrateTeam(client, roomCode).catch(() => null)
+    if (recovered?.team) return recovered
+    throw error
+  }
   return hydrateTeam(client, roomCode)
 }
 
@@ -61,3 +69,12 @@ export function secondsRemaining(state, now = Date.now()) {
 
 export function shouldPollTeamState(state,{hidden=false}={}){return Boolean(state?.team&&!hidden&&state.event?.status!=='ended')}
 export function teamRealtimeRecovery(status){if(status==='SUBSCRIBED')return'hydrate';if(['TIMED_OUT','CHANNEL_ERROR','CLOSED'].includes(status))return'resubscribe';return'none'}
+
+export async function submitNoContextResponse(client,teamId,playId,response){
+  const {error}=await client.rpc('submit_no_context_response',{p_team_id:teamId,p_play_id:playId,p_response:response})
+  if(error)throw error
+}
+export async function submitNoContextVote(client,teamId,playId,responseId,ballot){
+  const {error}=await client.rpc('submit_no_context_vote',{p_team_id:teamId,p_play_id:playId,p_response_id:responseId,p_ballot:ballot})
+  if(error)throw error
+}

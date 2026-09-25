@@ -3,11 +3,12 @@ export const CONTROL_ROUND_PREFIX='gameNightControlRound:'
 export function hostRoundOptions(snapshot={}) {
   const rounds=[...(snapshot.rounds||[])],ibet=snapshot.i_bet_you?.round
   if(ibet&&!rounds.some(round=>round.id===ibet.id))rounds.push({...ibet,game_type:'i_bet_you',title:ibet.title||'I Bet You'})
-  return rounds.sort((a,b)=>(a.position||99)-(b.position||99)).map(round=>({...round,configured:['guess_age','i_bet_you','perfect_lie'].includes(round.game_type)}))
+  if(snapshot.no_context?.round&&!rounds.some(r=>r.id===snapshot.no_context.round.id))rounds.push(snapshot.no_context.round)
+  return rounds.sort((a,b)=>(a.position||99)-(b.position||99)).map(round=>({...round,configured:['guess_age','i_bet_you','perfect_lie','no_context'].includes(round.game_type)}))
 }
 
 export function mergeHostRoundOptions(snapshot={},plannedRounds=[]) {
-  const rounds=hostRoundOptions(snapshot),typeFor=round=>round.type==='guessAge'?'guess_age':round.type==='iBetYou'?'i_bet_you':round.type==='perfectLie'?'perfect_lie':null
+  const rounds=hostRoundOptions(snapshot),typeFor=round=>round.type==='guessAge'?'guess_age':round.type==='iBetYou'?'i_bet_you':round.type==='perfectLie'?'perfect_lie':round.type==='noContext'?'no_context':null
   for(const [index,planned] of plannedRounds.entries()){const gameType=typeFor(planned);if(gameType&&!rounds.some(round=>round.game_type===gameType))rounds.push({id:`control-${gameType}`,position:index+1,game_type:gameType,title:planned.title,configured:true,setupOnly:true})}
   return rounds.sort((a,b)=>(a.position||99)-(b.position||99))
 }

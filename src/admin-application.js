@@ -137,6 +137,8 @@ export function createAdminApplication({
       judgeIBetYou: (groupId,success) => services.judgeIBetYouGroup(client,groupId,success).then(refreshActiveEvent),
       nextIBetYou: groupId => services.nextIBetYouGroup(client,groupId).then(refreshActiveEvent),
       resetIBetYou: groupId => services.resetIBetYouGroup(client,groupId).then(refreshActiveEvent),
+      setupNoContext: prompts => services.setupNoContext(client,eventId,prompts).then(refreshActiveEvent),
+      controlNoContext: (playId,action) => services.controlNoContext(client,eventId,playId,action).then(refreshActiveEvent),
       savePerfectLie: (title,categories) => services.savePerfectLieRound(client,eventId,title,categories).then(refreshActiveEvent),
       startPerfectLieQuestion: questionId => services.startPerfectLieQuestion(client,eventId,questionId).then(refreshActiveEvent),
       closePerfectLieWriting: () => services.closePerfectLieWriting(client,eventId).then(refreshActiveEvent),

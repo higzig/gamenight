@@ -13,5 +13,5 @@ describe('Team join polish',()=>{
     [{name:'Vixens',mascotId:'fox',takenMascotIds:['fox']},false],
     [{name:'Vixens',mascotId:'fox'},true],
   ])('derives whether Join Game is enabled for %o', (input,expected)=>expect(joinAvailability(input).canJoin).toBe(expected))
-  it('maps name and mascot races to specific safe errors',()=>{expect(friendlyJoinError({message:'That Team name is already taken.'})).toBe('That Team name is already taken.');expect(friendlyJoinError({message:'That mascot was just taken'})).toBe('That mascot was just taken. Pick another one.')})
+  it('maps name and mascot races to specific safe errors',()=>{expect(friendlyJoinError({message:'That Team name is already taken.'})).toContain('already has a Team Captain');expect(friendlyJoinError({message:'That mascot was just taken'})).toBe('That mascot was just taken. Pick another one.')})
 })
