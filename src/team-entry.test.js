@@ -93,3 +93,10 @@ describe('Captain controller page',()=>{
     expect(document.body.textContent).toContain('TABLE OF LIES');expect(document.body.textContent).toContain('Table One');expect(joinCalls).toBe(1)
   })
 })
+
+describe('Paused captain view',()=>{
+ it('hides all answer controls and countdowns until explicit host resume',async()=>{
+  owned=true;snapshot={...publicState(),game_paused:true,team:{id:'team-1',name:'Table One',mascot_id:'fox'},event:{...publicState().event,status:'ready',display_mode:'game'},round:{game_type:'guess_age'},question:{id:'q',celebrity_name:'Ada'},submission:{guess_integer:26}};
+  await mount();expect(document.body.textContent).toContain('GAME PAUSED');expect(document.body.textContent).toContain('answers and votes are saved');expect(document.querySelector('#lockBtn,.timer')).toBeNull();await vi.advanceTimersByTimeAsync(20000);expect(document.body.textContent).toContain('GAME PAUSED');expect(mocks.client.rpc.mock.calls.some(([name])=>name==='submit_guess')).toBe(false)
+ })
+})

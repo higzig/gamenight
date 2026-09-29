@@ -210,7 +210,7 @@ a game opens its controls; question/response timers still require their own Star
 action, so the Host can introduce the game first.
 
 Upcoming games can be reordered, removed from tonight’s line-up, or changed to a
-different game type in Game Settings. Active and completed games are locked against
+different game type in Game Settings. Active, paused and completed games are locked against
 those edits. Completed games expose current standings and the existing restart
 options through **Results & more**. Removing an upcoming game keeps its server
 content; adding that type again restores saved content. There are no placeholder
@@ -221,8 +221,8 @@ the existing server setup functions.
 I Bet You groups are created when the Host starts that game, using the teams then
 joined. No Context is prepared at Start using its five existing sample prompts.
 Table of Lies question selection and preparation run in sequence under **Start
-Question**, before the existing start RPC. All scoring, timers, team ownership,
-No Context voting/tiebreaks and audience gameplay rendering are unchanged.
+Question**, before the existing start RPC. Existing scoring, team ownership and No Context voting/tiebreak rules remain in place.
+Game switching now freezes timers as described below.
 
 The top-right **Audience** button opens the display. The adjacent **•••** menu
 provides Join / Game / Leaderboard overrides and **Automatic between games**.
@@ -235,9 +235,9 @@ does not trigger the overall game-complete transition.
 ### Boundaries of this UX pass
 
 - The running order, removed-game choices, unprepared drafts, finish-night marker,
-  and remembered Guess the Age completion are saved per event in this browser
+  and legacy remembered Guess the Age completion are saved per event in this browser
   (`gameNightPlan:<event id>`). The existing schema has no shared running-order API
-  or per-game Guess the Age lifecycle once another game takes over. Server snapshots
+  for planning. Per-game pause/completion checkpoints are now persisted on the server. Server snapshots
   remain authoritative for live game actions. Use the same Host browser for planning;
   cross-browser order/history synchronization is deferred.
 - Guess the Age’s save RPC selects that game on the event. To avoid disrupting live
@@ -249,7 +249,7 @@ does not trigger the overall game-complete transition.
   no existing finish-event service to call safely in this pass.
 - No Context custom prompt/image editing, multiple instances of a game type,
   server-backed plan reordering/removal, and a full server-owned Automatic Audience
-  mode are deferred. No migration or environment/configuration change is required.
+  mode are deferred. Pause/resume requires the migration below; no new environment variables are needed.
 - Settings drafts are separate from incoming snapshots. Polling cannot overwrite
   the open editor; closing without Save discards only that open draft. Existing
   celebrity-library photo uploads retain their immediate library-save behaviour.
@@ -257,3 +257,41 @@ does not trigger the overall game-complete transition.
 Validation includes the existing frontend/database suites plus running-order and
 Admin DOM integration coverage for setup, edits, type changes, removal, draft
 preservation, start/completion, event switching and manual audience overrides.
+
+
+### Switching games without losing progress
+
+Apply `supabase/migrations/202609290021_game_pause_resume.sql` before releasing
+this version of the frontend. This migration has only been validated locally.
+
+In **Tonight’s Games**, **Start** beside **Edit** selects any prepared game. The
+previous game becomes **PAUSED** automatically. Choosing **Resume →** on its card
+selects it but keeps its clock frozen; press **Resume Game** in its controls to
+continue. A genuinely completed game remains COMPLETE. Viewing the running order
+or the leaderboard alone does not pause the current game.
+
+The migration adds one private `game_checkpoints` table for each round’s lifecycle,
+saved event fields and deadlines. An event-row trigger captures switches, including
+legacy activation. Selection/resumption and gameplay writes lock the same event
+row. Existing answer, lie, vote, group, reveal and score-ledger tables remain the
+source of truth; switching does not delete/recreate gameplay or award points.
+Host snapshots include pause metadata; team/audience snapshots include a paused
+flag and display a holding view while the selected game awaits Resume.
+
+- **Guess the Age:** restores the current question and ready/answer/suspense/reveal
+  state, including submissions and remaining answer/reveal time.
+- **Table of Lies:** keeps the question, knowledge answers, lies, vote options,
+  votes and reveal index; its initial answer deadline freezes.
+- **I Bet You:** keeps groups, category, bidder, challenger, result and awarded
+  points; the group countdown freezes.
+- **No Context:** keeps prompt/round, phase, participant set, responses, ballot,
+  votes, placements, reveal page/position and scores. Response, voting and
+  tiebreak deadlines freeze, so its automatic transition job cannot run off stage.
+
+Resume shifts saved deadlines by the paused duration rather than granting a new
+phase window. An already-expired deadline stays expired. Duplicate Resume is a
+no-op, paused gameplay RPCs reject stale submissions, and existing one-action and
+idempotent scoring rules remain unchanged (No Context still permits editing a
+response/vote during its original open phase). Unsaved input drafts are not server
+checkpoints. Explicit reset/restart actions retain their existing warning and
+reset behavior; they are never used by switching.

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { challengeIBetYou, createJoinableEvent, deleteOwnedEvent, isAnonymousUser, judgeIBetYouGroup, saveGuessAgeRound,savePerfectLieRound, setIBetYouBid, setupIBetYouRound,startPerfectLieQuestion, startIBetYouTimer, uploadCelebrityImage } from './host-service.js'
+import { selectHostedGame,resumeHostedGame,challengeIBetYou, createJoinableEvent, deleteOwnedEvent, isAnonymousUser, judgeIBetYouGroup, saveGuessAgeRound,savePerfectLieRound, setIBetYouBid, setupIBetYouRound,startPerfectLieQuestion, startIBetYouTimer, uploadCelebrityImage } from './host-service.js'
 
 describe('Host service', () => {
   it('recognizes anonymous Auth users', () => {
@@ -33,3 +33,5 @@ describe('Host service', () => {
   it('lets the server derive I Bet You group count from active Teams',async()=>{const rpc=vi.fn().mockResolvedValue({data:{},error:null});await setupIBetYouRound({rpc},'e1');expect(rpc).toHaveBeenCalledWith('setup_i_bet_you_round',{p_event_id:'e1'})})
   it('routes Perfect Lie configuration and question start through authoritative RPCs',async()=>{const rpc=vi.fn().mockResolvedValue({data:'round-id',error:null}),client={rpc},categories=[{title:'Sport',questions:[]}];await savePerfectLieRound(client,'e1','Perfect Lie',categories);await startPerfectLieQuestion(client,'e1','q1');expect(rpc).toHaveBeenNthCalledWith(1,'save_perfect_lie_round',{p_event_id:'e1',p_title:'Perfect Lie',p_categories:categories});expect(rpc).toHaveBeenNthCalledWith(2,'start_perfect_lie_question',{p_event_id:'e1',p_question_id:'q1',p_duration_seconds:20})})
 })
+
+it('keeps selection and explicit timer resume as separate host RPCs',async()=>{const rpc=vi.fn().mockResolvedValue({data:{},error:null});await selectHostedGame({rpc},'e','r');await resumeHostedGame({rpc},'e','r');expect(rpc.mock.calls).toEqual([['select_hosted_game',{p_event_id:'e',p_round_id:'r'}],['resume_hosted_game',{p_event_id:'e',p_round_id:'r'}]])})

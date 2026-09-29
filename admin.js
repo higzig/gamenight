@@ -84,15 +84,16 @@ function loadNight(){
 function plannedGames(){return nightGames(remoteSession()||{},nightPlan)}
 function nightView(){document.querySelector('[data-view="night"]')?.click()}
 function gameForId(id){return plannedGames().find(g=>g.id===id||g.remote?.id===id||`control-${GAME_TYPES[g.type]}`===id)}
-function primaryNightGame(){const list=plannedGames();return list.find(g=>g.status==='live'&&g.remote?.id===remoteSession()?.event.active_round_id)||list.find(g=>g.status==='live')||null}
+function primaryNightGame(){return plannedGames().find(g=>g.status==='live'&&g.remote?.id===remoteSession()?.event.active_round_id)||null}
 function renderNight(){
   if(!remoteSession())return;
   const list=plannedGames(),live=primaryNightGame(),next=list.find(g=>g.status==='upcoming'),finished=nightPlan.finished&& !live;
+  const selectedPaused=list.find(g=>g.status==='paused'&&g.remote?.id===remoteSession().event.active_round_id);
   const history=nightScreen.startsWith('history:')?list.find(g=>g.id===nightScreen.slice(8)&&g.status==='complete'):null;
-  const stage=Boolean(history||live&&nightScreen!=='order');if(!stage)clearInterval(liveTicker);
+  const stage=Boolean(history||(live||selectedPaused)&&nightScreen!=='order');if(!stage)clearInterval(liveTicker);
   $('#nightOverview').hidden=stage;$('#nightStage').hidden=!stage;
   $('#addRound').disabled=nightPending;
-  if(history){renderGameHistory(history)}else if(stage){const id=live.remote?.id;if(id)localStorage.setItem(CONTROL_ROUND_PREFIX+nightEventId,id);$('#nightStage').dataset.game=live.type;renderLiveControl()}
+  if(history){renderGameHistory(history)}else if(stage&&selectedPaused){renderPausedGame(selectedPaused)}else if(stage){const id=live.remote?.id;if(id)localStorage.setItem(CONTROL_ROUND_PREFIX+nightEventId,id);$('#nightStage').dataset.game=live.type;renderLiveControl()}
   const heading=finished?'What a night.':live?`${games[live.type].name} is live`:next?`${games[next.type].name} is ${next.error?'nearly ready':'up next'}`:'Your stage is waiting';
   const detail=finished?'The final standings are on the Audience screen.':live?'Your game keeps running while you check the line-up.':next?next.error||roundSummary(next):'Add your first game to get the night started.';
   $('#nightRecommendation').innerHTML=`<section class="night-spotlight" data-game="${live?.type||next?.type||'brand'}"><div><p class="eyebrow">${finished?'NIGHT FINISHED':live?'ON STAGE':next?'UP NEXT':'LET’S GET STARTED'}</p><h2>${esc(heading)}</h2><p>${esc(detail)}</p></div>${live?'<button class="btn primary" id="resumeNight">Return to game →</button>':next?`<button class="btn primary" id="startNextGame" ${nightPending?'disabled':''}>${nightPending?'Starting…':next.error?'Set up game':`${list.some(g=>g.status==='complete')?'Next Game:':'Start'} ${esc(games[next.type].name)}`} →</button>`:list.length&&!finished?'<button class="btn primary" id="finishNight">Finish Night →</button>':finished?'<button class="btn secondary" id="finalStandings">View leaderboard →</button>':'<button class="btn primary" id="firstGame">+ Add Game</button>'}</section>`;
@@ -104,14 +105,18 @@ function renderNight(){
   renderRounds();renderAudienceOverride();
 }
 async function startNightGame(id){
-  const game=gameForId(id);if(!game||nightPending||game.status!=='upcoming')return;
-  if(primaryNightGame())return toast('Finish the current game before starting another.');
-  if(game.error)return openDrawer(game.id);
+  const game=gameForId(id);if(!game||nightPending||!['upcoming','paused'].includes(game.status))return;
+  if(game.status!=='paused'&&game.error)return openDrawer(game.id);
   nightPending=true;renderNight();
   try{
     await startPlannedGame(game,{snapshot:remoteSession,actions:window.gameNightSupabaseActions,prompts:NO_CONTEXT_TEST_PROMPTS});
-    nightPlan.progress[game.type]='live';const started=nightPlan.games.find(g=>g.type===game.type);if(started)delete started.awaitingStart;nightPlan.finished=false;nightScreen='auto';persistNight();nightView();
+    nightPlan.progress[game.type]=game.status==='paused'?'paused':'live';const started=nightPlan.games.find(g=>g.type===game.type);if(started)delete started.awaitingStart;nightPlan.finished=false;nightScreen='auto';persistNight();nightView();
   }catch(error){console.error(error);toast(error.message||'Could not start this game. Please try again.')}finally{nightPending=false;loadNight();renderNight()}
+}
+function renderPausedGame(game){
+  clearInterval(liveTicker);$('#nightStage').dataset.game=game.type;
+  $('#liveControl').innerHTML=`<header class="stage-heading"><div><p class="eyebrow">PAUSED</p><h2>${esc(games[game.type].name)}</h2><p>Your progress and points are saved. The clock is stopped.</p></div><button class="btn secondary" data-night-order>Tonight’s Games →</button></header><section class="panel"><h2>Ready to pick up where you left off?</h2><p>Resume continues the same question or phase, with the time that was left. Previously accepted answers and votes are preserved.</p><button class="btn primary" id="resumePausedGame">Resume Game</button></section>`;
+  bindRoundNavigator();$('#resumePausedGame').onclick=async()=>{const button=$('#resumePausedGame');button.disabled=true;try{await window.gameNightSupabaseActions.resumeGame(game.remote.id);loadNight();renderNight()}catch(error){toast(error.message||'Could not resume this game.');button.disabled=false}};
 }
 function renderGameHistory(game){
   const replay=game.type==='guessAge'||game.type==='noContext';
@@ -181,7 +186,8 @@ function roundSummary(r){
 }
 function renderRounds(){
   const list=plannedGames(),live=primaryNightGame(),next=list.find(g=>g.status==='upcoming');
-  $('#roundsList').innerHTML=list.map((r,i)=>{const g=games[r.type],status=r.status==='live'?'LIVE':r.status==='complete'?'COMPLETE':r.error?'NEEDS SETUP':r.id===next?.id?'UP NEXT':'READY';return `<article class="round-card night-game ${r.status}" data-game="${r.type}" data-id="${r.id}"><div class="round-num">${r.status==='complete'?'✓':String(i+1).padStart(2,'0')}</div><div class="game-icon">${g.icon}</div><div class="round-main"><span class="game-status ${r.status} ${r.error?'needs-setup':''}">${status}</span><h3>${esc(r.type==='perfectLie'?perfectLieDisplayTitle(r.title):r.title||g.name)}</h3><p>${esc(roundSummary(r))}</p></div><div class="round-actions">${r.editable?`<button class="mini-btn edit-round">Edit</button><button class="mini-btn move-up" aria-label="Move ${esc(g.name)} up" ${i===0||!list[i-1]?.editable||nightPending?'disabled':''}>↑</button><button class="mini-btn move-down" aria-label="Move ${esc(g.name)} down" ${i===list.length-1||!list[i+1]?.editable||nightPending?'disabled':''}>↓</button>`:r.status==='live'?'<button class="btn secondary resume-game">Return to game →</button>':'<button class="mini-btn game-history">Results &amp; more</button>'}</div></article>`}).join('')||'<div class="night-empty"><span>✦</span><h3>A blank canvas for a brilliant night.</h3><p>Choose a game above to begin your line-up.</p></div>';
+  $('#roundsList').innerHTML=list.map((r,i)=>{const g=games[r.type],status=r.status==='live'?'LIVE':r.status==='complete'?'COMPLETE':r.status==='paused'?'PAUSED':r.error?'NEEDS SETUP':r.id===next?.id?'UP NEXT':'READY';return `<article class="round-card night-game ${r.status}" data-game="${r.type}" data-id="${r.id}"><div class="round-num">${r.status==='complete'?'✓':String(i+1).padStart(2,'0')}</div><div class="game-icon">${g.icon}</div><div class="round-main"><span class="game-status ${r.status} ${r.error?'needs-setup':''}">${status}</span><h3>${esc(r.type==='perfectLie'?perfectLieDisplayTitle(r.title):r.title||g.name)}</h3><p>${esc(roundSummary(r))}</p></div><div class="round-actions">${r.editable?`<button class="mini-btn start-game" ${nightPending?'disabled':''}>Start</button><button class="mini-btn edit-round">Edit</button><button class="mini-btn move-up" aria-label="Move ${esc(g.name)} up" ${i===0||!list[i-1]?.editable||nightPending?'disabled':''}>↑</button><button class="mini-btn move-down" aria-label="Move ${esc(g.name)} down" ${i===list.length-1||!list[i+1]?.editable||nightPending?'disabled':''}>↓</button>`:r.status==='paused'?'<button class="btn secondary select-paused">Resume →</button>':r.status==='live'?'<button class="btn secondary resume-game">Return to game →</button>':'<button class="mini-btn game-history">Results &amp; more</button>'}</div></article>`}).join('')||'<div class="night-empty"><span>✦</span><h3>A blank canvas for a brilliant night.</h3><p>Choose a game above to begin your line-up.</p></div>';
+  document.querySelectorAll('.start-game,.select-paused').forEach(b=>b.onclick=()=>startNightGame(b.closest('.round-card').dataset.id));
   document.querySelectorAll('.edit-round').forEach(b=>b.onclick=()=>openDrawer(b.closest('.round-card').dataset.id));
   document.querySelectorAll('.move-up,.move-down').forEach(b=>b.onclick=()=>moveRound(b.closest('.round-card').dataset.id,b.classList.contains('move-up')?-1:1));
   document.querySelectorAll('.game-history').forEach(b=>b.onclick=()=>{nightScreen='history:'+b.closest('.round-card').dataset.id;renderNight()});

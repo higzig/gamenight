@@ -137,3 +137,6 @@ export const advancePerfectLieQuestion=(client,eventId,questionId=null)=>rpc(cli
 
 export const setupNoContext=(client,eventId,prompts)=>rpc(client,'setup_no_context',{p_event_id:eventId,p_prompts:prompts})
 export const controlNoContext=(client,eventId,playId,action)=>rpc(client,'no_context_control',{p_event_id:eventId,p_play_id:playId,p_action:action})
+
+export const selectHostedGame=(client,eventId,roundId)=>rpc(client,'select_hosted_game',{p_event_id:eventId,p_round_id:roundId})
+export const resumeHostedGame=(client,eventId,roundId)=>rpc(client,'resume_hosted_game',{p_event_id:eventId,p_round_id:roundId})

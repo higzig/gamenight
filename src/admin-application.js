@@ -145,6 +145,8 @@ export function createAdminApplication({
       startPerfectLieReveal: () => services.startPerfectLieReveal(client,eventId).then(refreshActiveEvent),
       advancePerfectLieReveal: () => services.advancePerfectLieReveal(client,eventId).then(refreshActiveEvent),
       advancePerfectLieQuestion: questionId => services.advancePerfectLieQuestion(client,eventId,questionId).then(refreshActiveEvent),
+      selectGame: roundId => services.selectHostedGame(client,eventId,roundId).then(refreshActiveEvent),
+      resumeGame: roundId => services.resumeHostedGame(client,eventId,roundId).then(refreshActiveEvent),
       activateRound: roundId => services.activateHostedRound(client,eventId,roundId).then(refreshActiveEvent),
       startNewSession: async () => {
         const newId = await services.copyEventSession(client, eventId)

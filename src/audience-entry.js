@@ -21,6 +21,7 @@ async function renderJoin(){const url=teamJoinUrl(location.origin,state.event.ro
 function render(){clearInterval(ticker);if(!state)return;const e=state.event,q=state.question,r=state.round,left=secondsRemaining(state),expired=e.status==='question'&&left<=0;
   if(e.display_mode==='join'){renderJoin().catch(console.error);return}
   if(e.display_mode==='leaderboard'){root.innerHTML=`<section class="screen leaderboard"><header><span>${esc(e.venue)}</span><span>${esc(e.name)}</span></header><div class="board-wrap"><p class="kicker">CURRENT STANDINGS</p><h1>Leaderboard</h1><div class="board">${(state.leaderboard||[]).map((t,i)=>`<div class="board-row ${i<3?'top':''}"><span class="place">${i+1}</span><strong>${mascotEmoji(t.mascot_id)} ${esc(t.name)}</strong><span class="points">${t.points}<small> pts</small></span></div>`).join('')}</div></div></section>`;return}
+  if(state.game_paused){root.innerHTML='<section class="holding"><p>GAME PAUSED</p><h1>We’ll be right back.</h1><h2>Your points are safe.</h2></section>';return}
   if(state.no_context&&state.no_context.round.id===e.active_round_id){root.innerHTML=noContextStage(state);ticker=setInterval(()=>updateNoContextClock(root,state),250);return}
   if(state.i_bet_you?.round?.id===e.active_round_id){renderIBetYou();return}
   if(state.perfect_lie?.round?.id===e.active_round_id){renderPerfectLie();return}

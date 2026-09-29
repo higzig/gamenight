@@ -13,6 +13,9 @@ export function serverGame(snapshot,type){
 export function gameProgress(snapshot,type){
   const round=serverGame(snapshot,type),event=snapshot.event||{}
   if(!round)return 'upcoming'
+  const checkpoint=snapshot.game_pause?.games?.find(g=>g.round_id===round.id)
+  if(checkpoint?.state==='paused')return 'paused'
+  if(checkpoint?.state==='complete'&&event.active_round_id!==round.id)return 'complete'
   if(type==='noContext'&&snapshot.no_context.play?.phase==='ready'&&event.active_round_id===round.id&&event.display_mode==='game')return 'live'
   if(type==='noContext')return snapshot.no_context.play?.phase==='complete'?'complete':snapshot.no_context.play?.number>1||snapshot.no_context.play?.phase!=='ready'?'live':'upcoming'
   if(type==='perfectLie')return round.phase==='complete'?'complete':round.active_question_id||!['setup','ready'].includes(round.phase)?'live':'upcoming'
@@ -33,7 +36,7 @@ export function setupError(game,snapshot){
 export function nightGames(snapshot,plan){
   return plan.games.filter(g=>GAME_TYPES[g.type]).map(game=>{
     const remote=serverGame(snapshot,game.type),progress=gameProgress(snapshot,game.type)
-    // Guess the Age has no persistent per-game lifecycle once another game is selected.
+    // Retain legacy browser progress until a server checkpoint supersedes it.
     const remembered=plan.progress?.[game.type]
     const status=game.awaitingStart&&progress==='complete'?'upcoming':progress!=='upcoming'?progress:remembered||'upcoming'
     return {...game,remote,status,error:setupError(game,snapshot),editable:status==='upcoming'}
@@ -58,19 +61,21 @@ export function reconcilePlan(snapshot,plan,names){
 }
 export async function startPlannedGame(game,{snapshot,actions,prompts}){
   const s=snapshot(),existing=serverGame(s,game.type)
+  if(game.status==='paused'){await actions.selectGame(existing.id);return}
   if(game.type==='guessAge'){
     if(!existing)await actions.saveGuessAgeRound(game.title,game.settings.celebrities)
-    await actions.activateRound(serverGame(snapshot(),game.type).id)
+    await actions.selectGame(serverGame(snapshot(),game.type).id)
   }else if(game.type==='perfectLie'){
     if(!existing)await actions.savePerfectLie(game.title,perfectLiePayload(game.settings.categories))
+    await actions.selectGame(serverGame(snapshot(),game.type).id)
     const current=snapshot().perfect_lie
     if(!current.round.active_question_id){const first=current.categories?.flatMap(c=>c.questions||[])[0];if(!first)throw new Error('Add a question first.');await actions.advancePerfectLieQuestion(first.id)}
     await actions.setDisplay('game')
   }else if(game.type==='iBetYou'){
     if(!existing)await actions.setupIBetYou()
-    else await actions.activateRound(existing.id)
+    else await actions.selectGame(existing.id)
   }else if(game.type==='noContext'){
     if(!existing)await actions.setupNoContext(prompts)
-    await actions.controlNoContext(snapshot().no_context.play.id,'resume')
+    await actions.selectGame(snapshot().no_context.round.id)
   }
 }
