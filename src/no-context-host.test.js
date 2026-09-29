@@ -25,14 +25,14 @@ describe('No Context Host integration',()=>{
     expect(document.querySelector('[data-nc-action="close_responses"]')).not.toBeNull()
     expect(document.getElementById('liveControl').textContent).toContain('0 / 0 teams answered')
   })
-  it('adds and prepares No Context from the existing game picker',async()=>{
+  it('adds No Context and prepares it on Start Game, retaining retry after failure',async()=>{
     window.gameNightRemoteSession.no_context=null;window.gameNightRemoteSession.event.active_round_id=null
     window.gameNightSupabaseActions.setupNoContext=vi.fn().mockRejectedValue(new Error('Test setup error'))
     await import('../admin.js')
     document.getElementById('addRound').click();document.querySelector('[data-game="noContext"]').click()
-    document.getElementById('openNoContext').click();expect(document.getElementById('ncSetup')).not.toBeNull()
-    document.getElementById('ncSetup').click();await flush()
+    document.getElementById('doneRound').click();await flush()
+    document.getElementById('startNextGame').click();await flush()
     expect(window.gameNightSupabaseActions.setupNoContext).toHaveBeenCalledWith(NO_CONTEXT_TEST_PROMPTS)
-    expect(document.getElementById('ncSetup').disabled).toBe(false)
+    expect(document.getElementById('startNextGame').disabled).toBe(false)
   })
 })

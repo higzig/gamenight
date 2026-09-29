@@ -1,0 +1,21 @@
+import {describe,it,expect,vi} from 'vitest'
+import {gameProgress,nightGames,reconcilePlan,startPlannedGame} from './admin-night.js'
+const names={guessAge:'Guess the Age',perfectLie:'Table of Lies',iBetYou:'I Bet You',noContext:'No Context'}
+const guess={id:'g',game_type:'guess_age',title:'Guess the Age',questions:[{id:'q',position:1,celebrity_name:'Ada',date_of_birth:'1980-01-01'}]}
+const base=()=>({event:{id:'e',status:'lobby',active_round_id:'g',display_mode:'join'},rounds:[guess],teams:[]})
+describe('Game Night running order',()=>{
+ it('does not mistake saving a lineup for starting gameplay',()=>expect(gameProgress(base(),'guessAge')).toBe('upcoming'))
+ it('excludes placeholder slots and retains the host’s order',()=>{const plan={games:[{id:'n',type:'noContext',settings:{}},{id:'x',type:'future',settings:{}}]};expect(reconcilePlan(base(),plan,names).games.map(g=>g.type)).toEqual(['noContext','guessAge'])})
+ it('keeps removed server games out of the line-up but recovers an externally started game',()=>{const s=base(),plan={games:[],excluded:['guessAge']};expect(reconcilePlan(s,plan,names).games).toHaveLength(0);s.event.status='question';expect(reconcilePlan(s,plan,names).games).toHaveLength(1)})
+ it('distinguishes No Context internal round completion from game completion',()=>{const s={event:{},no_context:{round:{id:'nc'},play:{number:1,phase:'round_complete'}}};expect(gameProgress(s,'noContext')).toBe('live');s.no_context.play.phase='complete';expect(gameProgress(s,'noContext')).toBe('complete')})
+ it('keeps active and completed games locked',()=>{const s=base();s.event.status='reveal';const p=reconcilePlan(s,null,names);expect(nightGames(s,p)[0].editable).toBe(false);s.event.status='round_complete';expect(nightGames(s,p)[0]).toMatchObject({status:'complete',editable:false})})
+ it('retains Guess the Age completion when a different game takes the stage',()=>{const s=base();s.event.status='round_complete';const p=reconcilePlan(s,null,names);s.event={...s.event,active_round_id:'other',status:'ready'};expect(nightGames(s,p)[0].status).toBe('complete')})
+ it('does not treat a newly saved lineup as the previous game’s completion',()=>{const s=base();s.event.status='round_complete';const p=reconcilePlan(s,{games:[{id:'g',type:'guessAge',awaitingStart:true,settings:{}}]},names);expect(nightGames(s,p)[0].status).toBe('upcoming')})
+ it('requires joined teams for I Bet You',()=>expect(nightGames(base(),{games:[{id:'i',type:'iBetYou',settings:{}}]})[0].error).toContain('two teams'))
+ it('does not mutate snapshots or stored plans',()=>{const s=base(),p={games:[]},copy=structuredClone(s);reconcilePlan(s,p,names);expect(s).toEqual(copy);expect(p.games).toEqual([])})
+})
+describe('Starting through existing game actions',()=>{
+ it('prepares No Context once, then activates without starting its timer',async()=>{let s={};const calls=[];const actions={setupNoContext:vi.fn(async()=>{calls.push('setup');s.no_context={round:{id:'nc'},play:{id:'p'}}}),controlNoContext:vi.fn(async()=>calls.push('resume'))};await startPlannedGame({type:'noContext'},{snapshot:()=>s,actions,prompts:['sample']});expect(calls).toEqual(['setup','resume']);expect(actions.controlNoContext).toHaveBeenCalledWith('p','resume');await startPlannedGame({type:'noContext'},{snapshot:()=>s,actions,prompts:[]});expect(actions.setupNoContext).toHaveBeenCalledTimes(1)})
+ it('stops after failed preparation without attempting activation',async()=>{const actions={setupIBetYou:vi.fn().mockRejectedValue(new Error('No teams')),activateRound:vi.fn()};await expect(startPlannedGame({type:'iBetYou'},{snapshot:()=>({}),actions})).rejects.toThrow('No teams');expect(actions.activateRound).not.toHaveBeenCalled()})
+ it('selects Table of Lies first question and display without starting the answer window',async()=>{const s={perfect_lie:{round:{id:'pl'},categories:[{questions:[{id:'q'}]}]}},actions={advancePerfectLieQuestion:vi.fn(),setDisplay:vi.fn(),startPerfectLieQuestion:vi.fn()};await startPlannedGame({type:'perfectLie'},{snapshot:()=>s,actions});expect(actions.advancePerfectLieQuestion).toHaveBeenCalledWith('q');expect(actions.setDisplay).toHaveBeenCalledWith('game');expect(actions.startPerfectLieQuestion).not.toHaveBeenCalled()})
+})

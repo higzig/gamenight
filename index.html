@@ -18,8 +18,7 @@
         <div><strong>Game Night</strong><span>Host Admin</span></div>
       </div>
       <nav>
-        <button class="nav-item active" data-view="event"><span>◫</span> Event</button>
-        <button class="nav-item" data-view="live"><span>●</span> Live Control</button>
+        <button class="nav-item active nav-primary" data-view="night"><span>◈</span> Game Night</button>
         <button class="nav-item" data-view="teams"><span>◎</span> Teams</button>
         <button class="nav-item" data-view="leaderboard"><span>↗</span> Leaderboard</button>
       </nav>
@@ -32,53 +31,24 @@
     <main class="main">
       <header class="topbar">
         <div>
-          <h1 id="eventTitle">Thursday Game Night</h1>
+          <p class="eyebrow night-brand-label">GAME NIGHT · HOST</p><h1 id="eventTitle">Thursday Game Night</h1>
           <p class="event-status-line" id="eventStatusLine"></p>
         </div>
         <div class="top-actions">
           <button class="btn secondary" id="headerAudience">Audience ↗</button>
-          <details class="admin-menu"><summary class="icon-btn" aria-label="Event menu">•••</summary><div><button id="switchEvent">Switch event</button><button id="logoutHost">Log out</button><button id="resetDemo" class="dev-only">Reset demo</button></div></details>
-          <button id="saveEvent" hidden>Save local game setup</button>
+          <details class="admin-menu"><summary class="icon-btn" aria-label="Night and audience options">•••</summary><div><div id="audienceOverride"></div><button id="switchEvent">Switch event</button><button id="logoutHost">Log out</button><button id="resetDemo" class="dev-only">Reset demo</button></div></details>
         </div>
       </header>
 
-      <section id="view-event" class="view active">
-        <div class="hero-grid">
-          <div class="panel event-card">
-            <div class="panel-heading">
-              <div><h2>Event details</h2></div>
-              <span class="pill ready">Draft</span>
-            </div>
-            <div class="form-grid">
-              <label>Event name<input id="eventName" type="text" /></label>
-              <label>Venue<input id="venueName" type="text" /></label>
-              <label>Date<input id="eventDate" type="date" /></label>
-            </div>
-          </div>
-
-          <div class="panel join-card">
-            <div class="panel-heading">
-              <div><h2>Join · <span id="roomCode">4821</span></h2></div>
-              <span class="pill ready">Live room</span>
-            </div>
-            <div class="join-box">
-              <div class="fake-qr" aria-label="QR placeholder"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
-              <div><strong id="connectedCount">0 teams registered</strong><p>One Team Captain per table scans to join. Their phone submits for the whole team.</p></div>
-            </div>
-            <button class="btn full" id="copyTeamLink">Copy Team join link</button>
-          </div>
+      <section id="view-night" class="view active">
+        <div id="nightOverview">
+          <div class="night-welcome"><div><p class="eyebrow">MAKE A NIGHT OF IT</p><h2>Your crowd. Your Game Night.</h2><p>Welcome your teams. Choose your games. Take the stage.</p></div><div class="join-ticket"><p class="eyebrow">TONIGHT’S ROOM</p><strong id="roomCode">—</strong><span id="connectedCount">0 teams registered</span><p>One Captain per table. One phone to play.</p><button class="btn secondary" id="copyTeamLink">Copy join link ↗</button></div></div>
+          <div id="nightRecommendation" aria-live="polite"></div>
+          <div class="section-heading"><div><p class="eyebrow">THE RUNNING ORDER</p><h2>Tonight’s Games</h2><p>Make it your night. Play in the order you choose.</p></div><button class="btn secondary" id="addRound">+ Add Game</button></div>
+          <div id="roundsList" class="rounds-list"></div>
+          <details class="night-details"><summary>Night details</summary><div class="form-grid"><label>Name<input id="eventName" type="text"></label><label>Venue<input id="venueName" type="text"></label><label>Date<input id="eventDate" type="date"></label></div></details>
         </div>
-
-        <div class="section-heading">
-          <div><h2>Rounds</h2><p>Planned order for the night. Open any configured round without changing this order.</p></div>
-          <button class="btn secondary" id="addRound">+ Add round</button>
-        </div>
-        <div id="roundsList" class="rounds-list"></div>
-      </section>
-
-      <section id="view-live" class="view">
-        <div class="section-heading compact"><div><h2>Live control</h2></div></div>
-        <div id="liveControl"></div>
+        <div id="nightStage" hidden><div id="liveControl"></div></div>
       </section>
 
       <section id="view-teams" class="view">
@@ -100,21 +70,23 @@
   </div>
 
   <div class="drawer-backdrop" id="drawerBackdrop"></div>
-  <aside class="drawer" id="roundDrawer">
+  <aside class="drawer" id="roundDrawer" role="dialog" aria-modal="true" aria-labelledby="drawerTitle">
     <div class="drawer-head">
-      <div><p class="eyebrow">ROUND EDITOR</p><h2 id="drawerTitle">Edit round</h2></div>
-      <button class="icon-btn" id="closeDrawer">×</button>
+      <div><p class="eyebrow">GAME SETTINGS</p><h2 id="drawerTitle">Edit game</h2></div>
+      <button class="icon-btn" id="closeDrawer" aria-label="Close game settings">×</button>
     </div>
+    <div id="gameTypeControl" class="game-type-control"></div>
+    <p id="gameSettingsError" class="settings-error" role="alert" hidden></p>
     <div id="drawerBody" class="drawer-body"></div>
     <div class="drawer-footer">
-      <button class="btn ghost" id="deleteRound">Delete round</button>
-      <button class="btn primary" id="doneRound">Done</button>
+      <button class="btn ghost danger-link" id="deleteRound">Remove game</button>
+      <button class="btn primary" id="doneRound">Save Game</button>
     </div>
   </aside>
 
   <div class="modal-backdrop" id="modalBackdrop"></div>
-  <div class="modal" id="roundModal">
-    <div class="modal-head"><div><p class="eyebrow">ADD ROUND</p><h2>Choose a game</h2></div><button class="icon-btn" id="closeModal">×</button></div>
+  <div class="modal" id="roundModal" role="dialog" aria-modal="true" aria-label="Add Game">
+    <div class="modal-head"><div><p class="eyebrow">ADD GAME</p><h2>Choose a game</h2></div><button class="icon-btn" id="closeModal" aria-label="Close game picker">×</button></div>
     <div class="game-picker" id="gamePicker"></div>
   </div>
 

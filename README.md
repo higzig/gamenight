@@ -199,3 +199,61 @@ There is no content moderation or answer filtering beyond whitespace/length and
 safe HTML rendering; test this with a trusted group before public venue use.
 Captain identity remains a persistent browser session, not a physical-device lock.
 Cross-device reassignment and production content/presentation remain later work.
+
+## Host Admin: Game Night workflow
+
+The primary **Game Night** screen now switches between tonight’s running order and
+an active game’s existing Host controls. Teams and Leaderboard remain available in
+the sidebar. Use **Add Game** to choose a game, **Edit → Save Game** to configure it,
+and the highlighted **Start** / **Next Game** action to take it on stage. Starting
+a game opens its controls; question/response timers still require their own Start
+action, so the Host can introduce the game first.
+
+Upcoming games can be reordered, removed from tonight’s line-up, or changed to a
+different game type in Game Settings. Active and completed games are locked against
+those edits. Completed games expose current standings and the existing restart
+options through **Results & more**. Removing an upcoming game keeps its server
+content; adding that type again restores saved content. There are no placeholder
+slots. Each of the four supported game types can be added once per night, matching
+the existing server setup functions.
+
+**Save Game** calls the existing Guess the Age / Table of Lies save functions.
+I Bet You groups are created when the Host starts that game, using the teams then
+joined. No Context is prepared at Start using its five existing sample prompts.
+Table of Lies question selection and preparation run in sequence under **Start
+Question**, before the existing start RPC. All scoring, timers, team ownership,
+No Context voting/tiebreaks and audience gameplay rendering are unchanged.
+
+The top-right **Audience** button opens the display. The adjacent **•••** menu
+provides Join / Game / Leaderboard overrides and **Automatic between games**.
+Existing game-start transitions show the game. On observed whole-game completion,
+the Admin shows standings unless the Host has chosen a manual override. This is
+not a new server-side automatic audience policy: existing game RPCs may still set
+the display on subsequent starts/advances. No Context’s internal round completion
+does not trigger the overall game-complete transition.
+
+### Boundaries of this UX pass
+
+- The running order, removed-game choices, unprepared drafts, finish-night marker,
+  and remembered Guess the Age completion are saved per event in this browser
+  (`gameNightPlan:<event id>`). The existing schema has no shared running-order API
+  or per-game Guess the Age lifecycle once another game takes over. Server snapshots
+  remain authoritative for live game actions. Use the same Host browser for planning;
+  cross-browser order/history synchronization is deferred.
+- Guess the Age’s save RPC selects that game on the event. To avoid disrupting live
+  play, saving a different Guess the Age lineup is blocked while a game is live;
+  the editor keeps the draft open. Save it before play or between games. Its timer
+  remains the existing server-enforced 15 seconds, now shown as read-only.
+- **Finish Night** shows the final standings and marks the plan finished locally.
+  It does not archive the server event or change its lifecycle to `ended`; there is
+  no existing finish-event service to call safely in this pass.
+- No Context custom prompt/image editing, multiple instances of a game type,
+  server-backed plan reordering/removal, and a full server-owned Automatic Audience
+  mode are deferred. No migration or environment/configuration change is required.
+- Settings drafts are separate from incoming snapshots. Polling cannot overwrite
+  the open editor; closing without Save discards only that open draft. Existing
+  celebrity-library photo uploads retain their immediate library-save behaviour.
+
+Validation includes the existing frontend/database suites plus running-order and
+Admin DOM integration coverage for setup, edits, type changes, removal, draft
+preservation, start/completion, event switching and manual audience overrides.
