@@ -295,3 +295,31 @@ idempotent scoring rules remain unchanged (No Context still permits editing a
 response/vote during its original open phase). Unsaved input drafts are not server
 checkpoints. Explicit reset/restart actions retain their existing warning and
 reset behavior; they are never used by switching.
+
+
+### Remembered category and celebrity defaults
+
+`202609290022_host_game_defaults.sql` adds host-owned category selections/custom
+categories and saved celebrity lineups. Apply it after the pause/resume migration
+before releasing this frontend. No production migration has been applied as part
+of this work.
+
+In **I Bet You → Edit**, the full built-in category list is initially selected,
+including all difficulties. Use the checkboxes, **Select all**, **Deselect all**,
+and **Add Category**, then **Save Game**. Custom categories are private to the
+host account. Saved selections and custom categories follow that account into
+new Game Nights, including another browser. Cancelling the editor saves nothing.
+Both initial group assignment and **Change Category** draw only from the game’s
+saved pool. At least one distinct category per group is required; changing a
+category needs an additional unused selection. Prepared games keep their frozen
+pool; changing defaults for a later night does not change earlier games. Existing
+prepared games retain their original easy-category pool through migration.
+
+New **Guess the Age** games start with the existing ten starter names and dates
+of birth: Pedro Pascal, Zendaya, Robert Downey Jr., Cristiano Ronaldo, Tom Holland,
+Scarlett Johansson, Ryan Reynolds, Lionel Messi, Florence Pugh and Samuel L. Jackson.
+The existing editor supports changing, removing, reordering and adding celebrities.
+Photos remain optional and use the existing upload/Wikipedia controls. After a
+successful **Save Game**, the host’s edited lineup becomes the default for new
+games, including its order, dates and saved photo references. Existing lineups
+are not automatically replaced or expanded to ten.

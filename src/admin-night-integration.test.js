@@ -14,8 +14,8 @@ beforeEach(()=>{
  document.body.innerHTML=new DOMParser().parseFromString(readFileSync('index.html','utf8'),'text/html').body.innerHTML
  vi.stubGlobal('BroadcastChannel',class{postMessage(){}});vi.stubGlobal('confirm',vi.fn(()=>true))
  const original=window.addEventListener.bind(window);vi.spyOn(window,'addEventListener').mockImplementation((type,handler,...rest)=>{handlers.push([type,handler]);original(type,handler,...rest)})
- snapshot={event:{id:'e',name:'Mic Check',room_code:'ABC123',event_date:'2026-09-25',status:'lobby',display_mode:'join'},rounds:[],teams:[{id:'a',name:'A',joined_at:new Date().toISOString()},{id:'b',name:'B',joined_at:new Date().toISOString()}],leaderboard:[]}
- actions={setDisplay:vi.fn(async mode=>{snapshot.event.display_mode=mode;emit()}),refresh:vi.fn(async()=>emit()),saveGuessAgeRound:vi.fn(async()=>emit()),savePerfectLie:vi.fn(async()=>emit()),selectGame:vi.fn(async id=>{snapshot.event.active_round_id=id;snapshot.event.active_question_id='q';snapshot.event.status='ready';snapshot.event.display_mode='game';emit()}),advanceQuestion:vi.fn(async()=>{snapshot.event.status='round_complete';snapshot.event.active_question_id=null;emit()})}
+ snapshot={event:{id:'e',name:'Mic Check',room_code:'ABC123',event_date:'2026-09-25',status:'lobby',display_mode:'join'},rounds:[],teams:[{id:'a',name:'A',joined_at:new Date().toISOString()},{id:'b',name:'B',joined_at:new Date().toISOString()}],leaderboard:[],game_defaults:{i_bet_you:{saved_for_event:false,categories:[{id:'films',title:'Films',difficulty:'easy',selected:true},{id:'comics',title:'Comics',difficulty:'hard',selected:true}]}}}
+ actions={saveIBetYouSettings:vi.fn(async categories=>{snapshot.game_defaults.i_bet_you={saved_for_event:true,categories:categories.map((c,i)=>({...c,id:c.id||`custom-${i}`}))};emit()}),setDisplay:vi.fn(async mode=>{snapshot.event.display_mode=mode;emit()}),refresh:vi.fn(async()=>emit()),saveGuessAgeRound:vi.fn(async()=>emit()),savePerfectLie:vi.fn(async()=>emit()),selectGame:vi.fn(async id=>{snapshot.event.active_round_id=id;snapshot.event.active_question_id='q';snapshot.event.status='ready';snapshot.event.display_mode='game';emit()}),advanceQuestion:vi.fn(async()=>{snapshot.event.status='round_complete';snapshot.event.active_question_id=null;emit()})}
  window.gameNightRemoteSession=snapshot;window.gameNightSupabaseActions=actions
 })
 afterEach(()=>{for(const [t,h]of handlers)window.removeEventListener(t,h);handlers=[];vi.clearAllTimers();vi.useRealTimers();vi.restoreAllMocks();vi.unstubAllGlobals();delete window.gameNightRemoteSession;delete window.gameNightSupabaseActions})
@@ -43,5 +43,23 @@ describe('Switching from Tonight’s Games',()=>{
   const paused=document.querySelector('[data-game="noContext"].night-game');expect(paused.textContent).toContain('PAUSED');expect(paused.querySelector('.edit-round')).toBeNull();paused.querySelector('.select-paused').click();await flush();
   expect(actions.resumeGame).not.toHaveBeenCalled();expect(document.getElementById('liveControl').textContent).toContain('The clock is stopped');expect(document.querySelector('[data-nc-action]')).toBeNull();
   document.getElementById('resumePausedGame').click();await flush();expect(actions.resumeGame).toHaveBeenCalledWith('nc');expect(document.getElementById('resumePausedGame')).toBeNull();expect(document.querySelector('[data-game="guessAge"].night-game').textContent).toContain('PAUSED');
+ })
+})
+
+describe('Category and celebrity defaults in Game Settings',()=>{
+ it('shows every category selected, supports custom categories, and saves deselections',async()=>{
+  plan([item('iBetYou')]);await import('../admin.js');document.querySelector('.edit-round').click();expect(document.querySelectorAll('[data-category]:checked')).toHaveLength(2);
+  const first=document.querySelector('[data-category="0"]');first.checked=false;first.dispatchEvent(new Event('change'));document.getElementById('customCategoryTitle').value='Irish comedians';document.getElementById('addIBetCategory').click();expect(document.querySelectorAll('[data-category]')).toHaveLength(3);
+  emit();expect(document.querySelector('[data-category="0"]').checked).toBe(false);document.getElementById('doneRound').click();await flush();expect(actions.saveIBetYouSettings).toHaveBeenCalledWith(expect.arrayContaining([expect.objectContaining({id:'films',selected:false}),expect.objectContaining({title:'Irish comedians',selected:true})]));
+  document.querySelector('.edit-round').click();expect(document.querySelector('[data-category="0"]').checked).toBe(false);expect(document.getElementById('drawerBody').textContent).toContain('Irish comedians');
+ })
+ it('keeps an empty selection unsaved and does not save cancelled edits',async()=>{
+  plan([item('iBetYou')]);await import('../admin.js');document.querySelector('.edit-round').click();document.getElementById('clearCategories').click();document.getElementById('doneRound').click();await flush();expect(document.getElementById('gameSettingsError').textContent).toContain('Select at least one');expect(actions.saveIBetYouSettings).not.toHaveBeenCalled();document.getElementById('closeDrawer').click();document.querySelector('.edit-round').click();expect(document.querySelectorAll('[data-category]:checked')).toHaveLength(2)
+ })
+ it('starts a new Guess the Age lineup with ten editable celebrities',async()=>{
+  await import('../admin.js');document.getElementById('addRound').click();document.querySelector('.game-option[data-game="guessAge"]').click();expect(document.querySelectorAll('.celeb-row')).toHaveLength(10);const name=document.querySelector('[data-field="name"]');name.value='My celebrity';name.dispatchEvent(new Event('input'));document.getElementById('addCeleb').click();expect(document.querySelectorAll('.celeb-row')).toHaveLength(11);expect(document.querySelector('[data-field="name"]').value).toBe('My celebrity');document.querySelector('.remove-celeb').click();expect(document.querySelectorAll('.celeb-row')).toHaveLength(10)
+ })
+ it('uses the account’s saved lineup when adding a game to a new night',async()=>{
+  snapshot.game_defaults.guess_age=[{celebrity_id:'saved',celebrity_name:'Saved celebrity',date_of_birth:'1980-02-03'}];await import('../admin.js');document.getElementById('addRound').click();document.querySelector('.game-option[data-game="guessAge"]').click();expect(document.querySelectorAll('.celeb-row')).toHaveLength(1);expect(document.querySelector('[data-field="name"]').value).toBe('Saved celebrity');expect(document.querySelector('[data-field="dob"]').value).toBe('1980-02-03')
  })
 })

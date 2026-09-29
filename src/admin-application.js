@@ -127,6 +127,7 @@ export function createAdminApplication({
       saveCelebrity: celebrity => services.saveCelebrityRecord(client, celebrity),
       uploadCelebrityImage: (celebrityId, blob) => services.uploadCelebrityImage(client, celebrityId, blob),
       markWikipediaChecked: celebrityId => services.markWikipediaChecked(client, celebrityId),
+      saveIBetYouSettings: categories => services.saveIBetYouSettings(client,eventId,categories).then(refreshActiveEvent),
       setupIBetYou: () => services.setupIBetYouRound(client,eventId).then(refreshActiveEvent),
       swapIBetYouTeams: (teamA,teamB) => services.swapIBetYouTeams(client,eventId,teamA,teamB).then(refreshActiveEvent),
       changeIBetYouCategory: groupId => services.changeIBetYouCategory(client,groupId).then(refreshActiveEvent),

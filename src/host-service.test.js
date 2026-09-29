@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { selectHostedGame,resumeHostedGame,challengeIBetYou, createJoinableEvent, deleteOwnedEvent, isAnonymousUser, judgeIBetYouGroup, saveGuessAgeRound,savePerfectLieRound, setIBetYouBid, setupIBetYouRound,startPerfectLieQuestion, startIBetYouTimer, uploadCelebrityImage } from './host-service.js'
+import { saveIBetYouSettings,selectHostedGame,resumeHostedGame,challengeIBetYou, createJoinableEvent, deleteOwnedEvent, isAnonymousUser, judgeIBetYouGroup, saveGuessAgeRound,savePerfectLieRound, setIBetYouBid, setupIBetYouRound,startPerfectLieQuestion, startIBetYouTimer, uploadCelebrityImage } from './host-service.js'
 
 describe('Host service', () => {
   it('recognizes anonymous Auth users', () => {
@@ -35,3 +35,5 @@ describe('Host service', () => {
 })
 
 it('keeps selection and explicit timer resume as separate host RPCs',async()=>{const rpc=vi.fn().mockResolvedValue({data:{},error:null});await selectHostedGame({rpc},'e','r');await resumeHostedGame({rpc},'e','r');expect(rpc.mock.calls).toEqual([['select_hosted_game',{p_event_id:'e',p_round_id:'r'}],['resume_hosted_game',{p_event_id:'e',p_round_id:'r'}]])})
+
+it('saves selected existing categories and keeps deselected custom drafts in the library',async()=>{const rpc=vi.fn().mockResolvedValue({data:{},error:null});await saveIBetYouSettings({rpc},'e',[{id:'a',title:'Films',selected:true},{id:'b',title:'Comics',selected:false},{title:'Irish comedians',selected:true},{title:'Local pubs',selected:false}]);expect(rpc).toHaveBeenCalledWith('save_i_bet_you_settings',{p_event_id:'e',p_category_ids:['a'],p_custom_categories:[{title:'Irish comedians',selected:true},{title:'Local pubs',selected:false}]})})

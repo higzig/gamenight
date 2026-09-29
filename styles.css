@@ -91,3 +91,5 @@
 @media(max-width:560px){.hosted-admin .night-welcome{grid-template-columns:1fr}.hosted-admin .night-welcome h2{font-size:27px}}
 
 .hosted-admin .night-game.paused{border-color:#bd9958}.game-status.paused{color:#f0c978}.hosted-admin .start-game{border-color:var(--game-accent);color:var(--game-accent)}
+
+.ibet-category-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;max-height:420px;overflow:auto;margin:14px 0 20px}.ibet-category-choice{display:flex;align-items:center;gap:10px;padding:12px;border:1px solid #343641;border-radius:8px;cursor:pointer}.ibet-category-choice input{width:18px;height:18px;flex-shrink:0;accent-color:#d6ef8a}.ibet-category-choice span{overflow-wrap:anywhere;font-size:13px}.ibet-category-choice small{display:block;color:var(--muted);font-size:10px;margin-top:3px;text-transform:capitalize}.ibet-add-category{display:flex;gap:10px;align-items:end}.ibet-add-category .field{flex:1;min-width:0;margin:0}.ibet-add-category .btn{flex-shrink:0}@media(max-width:560px){.ibet-category-list{grid-template-columns:1fr}.ibet-add-category{align-items:stretch;flex-direction:column}}

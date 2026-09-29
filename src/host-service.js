@@ -140,3 +140,8 @@ export const controlNoContext=(client,eventId,playId,action)=>rpc(client,'no_con
 
 export const selectHostedGame=(client,eventId,roundId)=>rpc(client,'select_hosted_game',{p_event_id:eventId,p_round_id:roundId})
 export const resumeHostedGame=(client,eventId,roundId)=>rpc(client,'resume_hosted_game',{p_event_id:eventId,p_round_id:roundId})
+
+export const saveIBetYouSettings=(client,eventId,categories)=>rpc(client,'save_i_bet_you_settings',{
+  p_event_id:eventId,p_category_ids:categories.filter(c=>c.id&&c.selected).map(c=>c.id),
+  p_custom_categories:categories.filter(c=>!c.id).map(c=>({title:c.title,selected:c.selected})),
+})

@@ -1,5 +1,5 @@
 import {describe,it,expect,vi} from 'vitest'
-import {gameProgress,nightGames,reconcilePlan,startPlannedGame} from './admin-night.js'
+import {guessAgeDefaults,iBetCategoryDefaults,categorySelectionError,gameProgress,nightGames,reconcilePlan,startPlannedGame} from './admin-night.js'
 const names={guessAge:'Guess the Age',perfectLie:'Table of Lies',iBetYou:'I Bet You',noContext:'No Context'}
 const guess={id:'g',game_type:'guess_age',title:'Guess the Age',questions:[{id:'q',position:1,celebrity_name:'Ada',date_of_birth:'1980-01-01'}]}
 const base=()=>({event:{id:'e',status:'lobby',active_round_id:'g',display_mode:'join'},rounds:[guess],teams:[]})
@@ -16,7 +16,7 @@ describe('Game Night running order',()=>{
 })
 describe('Starting through existing game actions',()=>{
  it('prepares No Context once, then activates without starting its timer',async()=>{let s={};const calls=[];const actions={setupNoContext:vi.fn(async()=>{calls.push('setup');s.no_context={round:{id:'nc'},play:{id:'p'}}}),selectGame:vi.fn(async()=>calls.push('select'))};await startPlannedGame({type:'noContext'},{snapshot:()=>s,actions,prompts:['sample']});expect(calls).toEqual(['setup','select']);expect(actions.selectGame).toHaveBeenCalledWith('nc');await startPlannedGame({type:'noContext'},{snapshot:()=>s,actions,prompts:[]});expect(actions.setupNoContext).toHaveBeenCalledTimes(1)})
- it('stops after failed preparation without attempting activation',async()=>{const actions={setupIBetYou:vi.fn().mockRejectedValue(new Error('No teams')),activateRound:vi.fn()};await expect(startPlannedGame({type:'iBetYou'},{snapshot:()=>({}),actions})).rejects.toThrow('No teams');expect(actions.activateRound).not.toHaveBeenCalled()})
+ it('stops after failed preparation without attempting activation',async()=>{const actions={saveIBetYouSettings:vi.fn(),setupIBetYou:vi.fn().mockRejectedValue(new Error('No teams')),activateRound:vi.fn()};await expect(startPlannedGame({type:'iBetYou'},{snapshot:()=>({}),actions})).rejects.toThrow('No teams');expect(actions.activateRound).not.toHaveBeenCalled()})
  it('selects Table of Lies first question and display without starting the answer window',async()=>{const s={perfect_lie:{round:{id:'pl'},categories:[{questions:[{id:'q'}]}]}},actions={selectGame:vi.fn(),advancePerfectLieQuestion:vi.fn(),setDisplay:vi.fn(),startPerfectLieQuestion:vi.fn()};await startPlannedGame({type:'perfectLie'},{snapshot:()=>s,actions});expect(actions.advancePerfectLieQuestion).toHaveBeenCalledWith('q');expect(actions.setDisplay).toHaveBeenCalledWith('game');expect(actions.startPerfectLieQuestion).not.toHaveBeenCalled()})
 })
 
@@ -24,3 +24,12 @@ describe('Paused games',()=>{
  it('trusts persisted pause state across reloads and keeps the game locked',()=>{const s=base();s.game_pause={games:[{round_id:'g',state:'paused'}]};expect(gameProgress(s,'guessAge')).toBe('paused');expect(nightGames(s,reconcilePlan(s,null,names))[0]).toMatchObject({status:'paused',editable:false})})
  it('selects a paused game without starting a question or resuming a timer',async()=>{const actions={selectGame:vi.fn(),resumeGame:vi.fn(),saveGuessAgeRound:vi.fn(),startQuestion:vi.fn()};await startPlannedGame({type:'guessAge',status:'paused'},{snapshot:base,actions});expect(actions.selectGame).toHaveBeenCalledWith('g');expect(actions.resumeGame).not.toHaveBeenCalled();expect(actions.saveGuessAgeRound).not.toHaveBeenCalled();expect(actions.startQuestion).not.toHaveBeenCalled()})
 })
+
+describe('Remembered game defaults',()=>{
+ it('restores host celebrity defaults without sharing mutable drafts',()=>{const snapshot={game_defaults:{guess_age:[{celebrity_id:'c',celebrity_name:'Saved star',date_of_birth:'1980-01-01',external_image_url:'https://example.com/p.jpg'}]}};const draft=guessAgeDefaults(snapshot,[]);expect(draft[0]).toMatchObject({id:'c',name:'Saved star',dob:'1980-01-01'});draft[0].name='Edited';expect(snapshot.game_defaults.guess_age[0].celebrity_name).toBe('Saved star')})
+ it('copies the starter lineup only when no saved default exists',()=>{const seed=[{name:'Starter',dob:'1980-01-01'}];expect(guessAgeDefaults({},seed)).toEqual(seed);expect(guessAgeDefaults({},seed)).not.toBe(seed)})
+ it('retains deselections and custom categories without mutating the account defaults',()=>{const snapshot={game_defaults:{i_bet_you:{categories:[{id:'a',title:'Films',selected:false},{id:'b',title:'Local pubs',selected:true,custom:true}]}}};const draft=iBetCategoryDefaults(snapshot);expect(draft[0].selected).toBe(false);draft[1].selected=false;expect(snapshot.game_defaults.i_bet_you.categories[1].selected).toBe(true);expect(categorySelectionError(draft)).toContain('at least one')})
+ it('recovers a saved category configuration even without browser running-order storage',()=>{const snapshot={game_defaults:{i_bet_you:{saved_for_event:true,categories:[{id:'a',title:'Films',selected:true}]}}};const plan=reconcilePlan(snapshot,null,names);expect(plan.games[0]).toMatchObject({type:'iBetYou',settings:{categories:[{id:'a',selected:true}]}})})
+})
+
+it('requires enough selected categories for the joined team groups',()=>{const snapshot={teams:Array.from({length:10},(_,id)=>({id,status:'active'}))};const plan={games:[{type:'iBetYou',settings:{categories:[{title:'Films',selected:true}]}}]};expect(nightGames(snapshot,plan)[0].error).toContain('at least 2 categories')})

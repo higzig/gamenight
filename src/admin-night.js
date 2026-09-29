@@ -30,7 +30,13 @@ export function gameProgress(snapshot,type){
 export function setupError(game,snapshot){
   if(game.type==='guessAge')return lineupValidationError(game.settings?.celebrities||[])?.replaceAll('syncing','saving')
   if(game.type==='perfectLie')return perfectLieValidationError(game.settings?.categories||[])
-  if(game.type==='iBetYou'&&(snapshot.teams||[]).filter(t=>t.status!=='inactive').length<2)return 'At least two teams need to join.'
+  if(game.type==='iBetYou'&&game.settings?.categories){const error=categorySelectionError(game.settings.categories);if(error)return error}
+  if(game.type==='iBetYou'){
+    const teams=(snapshot.teams||[]).filter(t=>t.status!=='inactive').length
+    if(teams<2)return 'At least two teams need to join.'
+    const groups=teams<=6?1:Math.ceil(teams/5)
+    if(game.settings?.categories&&game.settings.categories.filter(c=>c.selected).length<groups)return `Select at least ${groups} categories for ${teams} teams (${groups} groups).`
+  }
   return null
 }
 export function nightGames(snapshot,plan){
@@ -57,6 +63,12 @@ export function reconcilePlan(snapshot,plan,names){
     if(type==='guessAge')game.settings={timer:15,points:'bands',celebrities:(remote.questions||[]).map(q=>({id:q.celebrity_id,questionId:q.id,name:q.celebrity_name,dob:q.date_of_birth,imageKind:q.image_kind,imagePath:q.image_path,image:q.external_image_url||'',imageSourceKind:q.image_source,sourceReference:q.source_reference,libraryStatus:q.celebrity_id?'existing':'new'}))}
     if(type==='perfectLie'&&snapshot.perfect_lie.categories)game.settings={categories:structuredClone(snapshot.perfect_lie.categories)}
   }
+  const savedCategories=snapshot.game_defaults?.i_bet_you
+  if(savedCategories?.saved_for_event){
+    let game=next.games.find(g=>g.type==='iBetYou')
+    if(!game&&!next.excluded.includes('iBetYou')){game={id:'plan-i_bet_you',type:'iBetYou',title:names.iBetYou,settings:{}};next.games.push(game)}
+    if(game)game.settings={...game.settings,categories:structuredClone(savedCategories.categories)}
+  }
   return next
 }
 export async function startPlannedGame(game,{snapshot,actions,prompts}){
@@ -72,10 +84,26 @@ export async function startPlannedGame(game,{snapshot,actions,prompts}){
     if(!current.round.active_question_id){const first=current.categories?.flatMap(c=>c.questions||[])[0];if(!first)throw new Error('Add a question first.');await actions.advancePerfectLieQuestion(first.id)}
     await actions.setDisplay('game')
   }else if(game.type==='iBetYou'){
-    if(!existing)await actions.setupIBetYou()
+    if(!existing){
+      if(!s.game_defaults?.i_bet_you?.saved_for_event)await actions.saveIBetYouSettings(game.settings?.categories||iBetCategoryDefaults(s))
+      await actions.setupIBetYou()
+    }
     else await actions.selectGame(existing.id)
   }else if(game.type==='noContext'){
     if(!existing)await actions.setupNoContext(prompts)
     await actions.selectGame(snapshot().no_context.round.id)
   }
+}
+
+export function iBetCategoryDefaults(snapshot){return structuredClone(snapshot.game_defaults?.i_bet_you?.categories||[])}
+export function guessAgeDefaults(snapshot,fallback){
+  const saved=snapshot.game_defaults?.guess_age
+  if(!saved?.length)return structuredClone(fallback)
+  return saved.map(c=>({id:c.celebrity_id,name:c.celebrity_name,dob:c.date_of_birth,imageKind:c.image_kind,imagePath:c.image_path,image:c.external_image_url||'',imageSourceKind:c.image_source,sourceReference:c.source_reference,libraryStatus:'existing'}))
+}
+export function categorySelectionError(categories){
+  if(!categories?.length)return 'The category list is unavailable. Refresh and try again.'
+  if(!categories.some(c=>c.selected))return 'Select at least one category.'
+  if(categories.some(c=>!c.title?.trim()||c.title.trim().length<2||c.title.trim().length>120))return 'Categories need 2 to 120 characters.'
+  return null
 }
