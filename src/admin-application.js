@@ -1,5 +1,5 @@
 import { classifyEvents, formatEventDate, humanEventStatus, localCalendarDate } from './event-chooser.js'
-import { realtimeRecovery, shouldAcceptSnapshot, shouldPollEvent, stateVersion } from './state-sync.js'
+import { isSnapshotChange, realtimeRecovery, shouldPollEvent, snapshotFingerprint, stateVersion } from './state-sync.js'
 
 export function createAdminApplication({
   client,
@@ -19,6 +19,7 @@ export function createAdminApplication({
   let hydratePromise = null
   let hydrateQueued = false
   let acceptedVersion = -1
+  let acceptedFingerprint = null
   let recoveryTimer = null
   let resubscribeTimer = null
 
@@ -113,6 +114,7 @@ export function createAdminApplication({
     const snapshot = await services.hydrateHostEvent(client, eventId)
     activeEventId = eventId
     acceptedVersion = stateVersion(snapshot)
+    acceptedFingerprint = snapshotFingerprint(snapshot)
     win.gameNightRemoteSession = snapshot
     win.gameNightSupabaseActions = {
       saveGuessAgeRound: (title, celebrities) => services.saveGuessAgeRound(client, eventId, title, celebrities).then(refreshActiveEvent),
@@ -167,8 +169,9 @@ export function createAdminApplication({
     if(hydratePromise){hydrateQueued=true;return hydratePromise}
     const request=(async()=>{
       const snapshot=await services.hydrateHostEvent(client,activeEventId)
-      if(!shouldAcceptSnapshot(snapshot,acceptedVersion))return win.gameNightRemoteSession
-      acceptedVersion=stateVersion(snapshot)
+      // Unchanged or stale snapshots keep the current view (and keep recovery polling alive).
+      if(!isSnapshotChange(snapshot,acceptedVersion,acceptedFingerprint)){scheduleRecovery();return win.gameNightRemoteSession}
+      acceptedVersion=stateVersion(snapshot);acceptedFingerprint=snapshotFingerprint(snapshot)
       win.gameNightRemoteSession=snapshot
       win.dispatchEvent(new CustomEvent('game-night-remote-state',{detail:snapshot}))
       scheduleRecovery()

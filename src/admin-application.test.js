@@ -160,4 +160,28 @@ describe('Admin top-level application states', () => {
     expect(document.getElementById('gatewayError').textContent).toContain('Could not create the event')
     expect(document.getElementById('gatewayError').textContent).not.toContain('sensitive backend detail')
   })
+
+  it('ignores unchanged recovery polls but still applies and keeps polling for genuine updates', async () => {
+    vi.useFakeTimers()
+    try {
+      let version = 7
+      const hydrate = vi.fn(async () => ({ server_now: new Date().toISOString(), event: { id: 'event-1', name: 'Night', room_code: 'ABC123', status: 'question', state_version: version }, teams: [] }))
+      const { application } = setup({ hydrate })
+      const dispatched = []
+      const listener = event => dispatched.push(event.detail.event.state_version)
+      window.addEventListener('game-night-remote-state', listener)
+      await application.init(); await application.openEvent('event-1')
+      await vi.advanceTimersByTimeAsync(10500)
+      expect(hydrate.mock.calls.length).toBeGreaterThanOrEqual(4)
+      expect(dispatched).toEqual([7])
+      version = 8
+      await vi.advanceTimersByTimeAsync(3500)
+      expect(dispatched).toEqual([7, 8])
+      const calls = hydrate.mock.calls.length
+      await vi.advanceTimersByTimeAsync(3500)
+      expect(hydrate.mock.calls.length).toBeGreaterThan(calls)
+      window.removeEventListener('game-night-remote-state', listener)
+      await application.backToEvents()
+    } finally { vi.useRealTimers() }
+  })
 })

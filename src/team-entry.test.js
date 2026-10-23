@@ -94,6 +94,62 @@ describe('Captain controller page',()=>{
   })
 })
 
+describe('Table of Lies captain timer',()=>{
+ it('keeps the same lie input after the answer deadline once an answer is submitted',async()=>{
+  const deadline=new Date(Date.now()+20000).toISOString(),writing=extra=>({round:{id:'lie',phase:'writing'},question:{id:'q1',category:'Sport',question_text:'Who?'},options:[],...extra})
+  owned=true;snapshot={...publicState(),team:{id:'team-1',name:'Table One',mascot_id:'fox'},event:{...publicState().event,status:'question',display_mode:'game',active_round_id:'lie',question_deadline_at:deadline},perfect_lie:writing()}
+  const base=mocks.client.rpc
+  mocks.client.rpc=vi.fn(async(name,args)=>{
+    snapshot.server_now=new Date().toISOString()
+    if(name==='submit_perfect_lie_answer'){snapshot.perfect_lie=writing({my_response:{initial_answer:args.p_answer,knew_truth:false,timed_out:false}});snapshot.event.state_version++;return {data:{knew_truth:false,lie_draft:args.p_answer}}}
+    return base(name,args)
+  })
+  await mount()
+  const answer=document.getElementById('plAnswer');answer.value='Pirates';answer.dispatchEvent(new Event('input'))
+  document.getElementById('plAnswerForm').dispatchEvent(new Event('submit',{cancelable:true}));await flush()
+  expect(document.getElementById('plLie')).not.toBeNull()
+  // Isolate the countdown from the separate 3.5s recovery poll, which stops while hidden.
+  vi.spyOn(document,'hidden','get').mockReturnValue(true);await vi.advanceTimersByTimeAsync(3500)
+  const lie=document.getElementById('plLie');lie.value='Ninjas';lie.dispatchEvent(new Event('input'))
+  await vi.advanceTimersByTimeAsync(20000)
+  expect(document.getElementById('plLie')).toBe(lie);expect(lie.value).toBe('Ninjas')
+ })
+})
+
+describe('Captain recovery polling',()=>{
+ async function mountWritingLie(){
+  owned=true;snapshot={...publicState(),team:{id:'team-1',name:'Table One',mascot_id:'fox'},event:{...publicState().event,status:'question',display_mode:'game',active_round_id:'lie',question_deadline_at:new Date(Date.now()+120000).toISOString()},perfect_lie:{round:{id:'lie',phase:'writing'},question:{id:'q1',category:'Sport',question_text:'Who?'},options:[],lie_count:0,my_response:{initial_answer:'Pirates',knew_truth:false,timed_out:false}}}
+  const base=mocks.client.rpc
+  // The real server returns a fresh server_now on every call.
+  mocks.client.rpc=vi.fn(async(name,args)=>{snapshot.server_now=new Date().toISOString();return base(name,args)})
+  await mount()
+  const lie=document.getElementById('plLie');lie.focus();lie.value='Ninjas';lie.dispatchEvent(new Event('input'));lie.setSelectionRange(2,4)
+  return lie
+ }
+ const polls=()=>mocks.client.rpc.mock.calls.filter(([name])=>name==='get_team_room_state').length
+ it('leaves the page untouched when polls return an unchanged snapshot',async()=>{
+  const lie=await mountWritingLie(),before=polls()
+  await vi.advanceTimersByTimeAsync(10500)
+  expect(polls()).toBeGreaterThanOrEqual(before+3)
+  expect(document.getElementById('plLie')).toBe(lie);expect(document.activeElement).toBe(lie)
+  expect(lie.value).toBe('Ninjas');expect([lie.selectionStart,lie.selectionEnd]).toEqual([2,4])
+ })
+ it('applies a genuine update while keeping the typed value, focus and cursor',async()=>{
+  const lie=await mountWritingLie()
+  snapshot.perfect_lie.lie_count=1;snapshot.event.state_version++
+  await vi.advanceTimersByTimeAsync(3500)
+  const next=document.getElementById('plLie')
+  expect(next).not.toBe(lie);expect(document.activeElement).toBe(next)
+  expect(next.value).toBe('Ninjas');expect([next.selectionStart,next.selectionEnd]).toEqual([2,4])
+ })
+ it('renders genuine phase changes from a poll',async()=>{
+  await mountWritingLie()
+  snapshot.perfect_lie={...snapshot.perfect_lie,round:{id:'lie',phase:'voting'},options:[{id:'o1',text:'Bees',is_own:false},{id:'o2',text:'Ninjas',is_own:true}]};snapshot.event.state_version++
+  await vi.advanceTimersByTimeAsync(3500)
+  expect(document.getElementById('plLie')).toBeNull();expect(document.querySelectorAll('.perfect-lie-option')).toHaveLength(2)
+ })
+})
+
 describe('Paused captain view',()=>{
  it('hides all answer controls and countdowns until explicit host resume',async()=>{
   owned=true;snapshot={...publicState(),game_paused:true,team:{id:'team-1',name:'Table One',mascot_id:'fox'},event:{...publicState().event,status:'ready',display_mode:'game'},round:{game_type:'guess_age'},question:{id:'q',celebrity_name:'Ada'},submission:{guess_integer:26}};
