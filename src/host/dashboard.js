@@ -68,14 +68,21 @@ function heroAction(model) {
 
 function heroNote(model) {
   const { live, started, games, startCheck, next, finished } = model
+  const fixes = startCheck.blocking.map(game => ` <button class="gn-inline-link" data-action="edit" data-type="${game.type}">Set up ${esc(GAME_CATALOG[game.type].name)}</button>`).join('')
   if (live) return 'Your game keeps running while you look around. The Audience screen follows the game, not this page.'
-  if (!started && !startCheck.canStart) return `${esc(startCheck.reason)}${startCheck.blocking.map(game => ` <button class="gn-inline-link" data-action="edit" data-type="${game.type}">Set up ${esc(GAME_CATALOG[game.type].name)}</button>`).join('')}`
-  if (!started) return 'Starting the night puts the join screen on the Audience display so teams can scan in.'
-  if (next) return next.error && next.state === 'ready' ? esc(next.error) : `Up next: ${esc(GAME_CATALOG[next.type].name)}.`
+  if (!started && startCheck.blocking.length) return `Teams can join as soon as you start. ${esc(startCheck.reason)}${fixes}`
+  if (!started) return games.length ? 'Starting the night puts the join screen on the Audience display so teams can scan in.' : esc(startCheck.reason)
+  if (next) return next.error && next.state === 'ready' ? esc(next.error) : next.state === 'needs_setup' ? `${esc(GAME_CATALOG[next.type].name)} needs setting up before it can start.` : `Up next: ${esc(GAME_CATALOG[next.type].name)}.`
   if (finished) return 'The night is finished. Final standings are on the Audience screen.'
   return games.length ? 'Every game is complete. Finish the night to show the final standings.' : 'Add your first game to begin.'
 }
 
+export const NIGHT_STATUS_LABELS = { live: 'Live', paused: 'Paused', finished: 'Finished', hosting: 'Hosting', planning: 'Planning' }
+export function nightStatus({ live, pausedGame, finished, started }) {
+  return live ? 'live' : pausedGame ? 'paused' : finished ? 'finished' : started ? 'hosting' : 'planning'
+}
+
+// The project name is the page heading (top bar). This strip only carries status and actions.
 export function dashboardMarkup(model) {
   const { event, teamCount, games, started, busy } = model
   const context = { started, busy, games }
@@ -83,16 +90,12 @@ export function dashboardMarkup(model) {
   const empty = games.length < MAX_LINEUP
     ? `<button class="gn-card gn-empty" data-action="add"${busy ? ' disabled' : ''}><span class="gn-empty-plus" aria-hidden="true">+</span><strong>Add Game</strong><small>Choose from the game library</small></button>`
     : '<p class="gn-all-added">All four games are in tonight’s line-up.</p>'
-  const status = model.live ? 'Live' : model.pausedGame ? 'Paused' : model.finished ? 'Finished' : started ? 'Hosting' : 'Planning'
-  return `<section class="gn-hero" data-game="${model.live?.type || 'brand'}">
-      <div class="gn-hero-copy">
-        <p class="eyebrow">GAME NIGHT · <span class="gn-night-status">${status.toUpperCase()}</span></p>
-        <h2>${esc(event.name)}</h2>
-        <p class="gn-hero-sub">${[event.venue, event.date].filter(Boolean).map(esc).join(' · ')}</p>
-        <div class="gn-chips">
-          <button class="gn-chip" data-action="copy-link" title="Copy the team join link"><span>ROOM</span><strong>${esc(event.roomCode)}</strong></button>
-          <button class="gn-chip" data-action="teams"><span>TEAMS</span><strong>${teamCount}</strong><em>Manage →</em></button>
-        </div>
+  const status = nightStatus(model)
+  return `<section class="gn-hero" data-game="${model.live?.type || 'brand'}" aria-label="Project status">
+      <div class="gn-hero-info">
+        <span class="gn-night-pill gn-night-${status}">${status === 'live' ? '● ' : ''}${NIGHT_STATUS_LABELS[status]}</span>
+        <button class="gn-chip" data-action="copy-link" title="Copy the team join link"><span>ROOM</span><strong>${esc(event.roomCode)}</strong></button>
+        <button class="gn-chip" data-action="teams"><span>TEAMS</span><strong>${teamCount}</strong><em>Manage →</em></button>
       </div>
       <div class="gn-hero-action">${heroAction(model)}<p class="gn-hero-note" id="startNightReason">${heroNote(model)}</p></div>
     </section>

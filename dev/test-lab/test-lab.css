@@ -1,0 +1,31 @@
+:root{color-scheme:dark;--bg:#0b1020;--panel:#121a2e;--line:#26324d;--text:#e8edf8;--muted:#93a0bd;--ok:#5ee0a0;--warn:#ffc36b;--bad:#ff8a9a;--accent:#7c9cff}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 Inter,system-ui,sans-serif}
+.lab{max-width:1180px;margin:0 auto;padding:20px}
+.lab-head{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap;margin-bottom:16px}
+.lab-head h1{margin:0;font-size:24px}
+.lab-eyebrow{margin:0 0 4px;font-size:11px;letter-spacing:.14em;font-weight:800;color:var(--warn)}
+.lab-connection{margin:0;padding:6px 12px;border-radius:999px;border:1px solid var(--line);font-weight:700}
+.lab-connection.ok{color:var(--ok);border-color:#1f5a43}.lab-connection.bad{color:var(--bad);border-color:#7a2a3b}
+.lab-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:14px}
+.lab-panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px}
+.lab-panel h2{margin:0 0 10px;font-size:15px}
+.lab-wide{grid-column:1/-1}
+.lab-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:8px 0}
+label{color:var(--muted);font-weight:600}
+select,input,button{font:inherit;color:var(--text);background:#0d1426;border:1px solid var(--line);border-radius:8px;padding:7px 10px}
+input[type=number]{width:90px}
+button{cursor:pointer;font-weight:700}
+button:hover:not(:disabled){border-color:#3d4f78}
+button:disabled{opacity:.45;cursor:not-allowed}
+button.primary{background:#2a4bd6;border-color:#2a4bd6}
+button.danger{color:var(--bad);border-color:#5a2433}
+button.preset[aria-pressed=true]{border-color:var(--accent);color:var(--accent)}
+.lab-stat{display:grid;grid-template-columns:140px 1fr;gap:4px 10px;margin:0}
+.lab-stat dt{color:var(--muted)}.lab-stat dd{margin:0;font-weight:700}
+.lab-log{list-style:none;margin:0;padding:0;max-height:360px;overflow:auto;font:12.5px/1.5 ui-monospace,Menlo,monospace}
+.lab-log li{padding:3px 0;border-bottom:1px solid #1a2440}.lab-log time{color:var(--muted);margin-right:8px}.lab-log .warn{color:var(--warn)}
+.lab-note{color:var(--muted);margin:6px 0 0}
+.lab-refusal{padding:20px;border:1px solid #7a2a3b;border-radius:12px;background:#2a121c;color:#ffd6dd}
+.lab-message{min-height:20px;margin:6px 0 0}.lab-message.bad{color:var(--bad)}.lab-message.ok{color:var(--ok)}
+@media (max-width:820px){.lab-grid{grid-template-columns:1fr}}

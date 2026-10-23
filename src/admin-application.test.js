@@ -22,8 +22,8 @@ function setup({ session = { user: { is_anonymous: false } }, events = [], creat
   }
   const services = {
     isAnonymousUser: user => user?.is_anonymous === true,
-    listOwnedEvents: vi.fn().mockResolvedValue(events),
-    createJoinableEvent: create ?? vi.fn().mockResolvedValue('event-1'),
+    listProjects: vi.fn().mockResolvedValue(events),
+    createProject: create ?? vi.fn().mockResolvedValue('event-1'),
     hydrateHostEvent: hydrate ?? vi.fn().mockResolvedValue(snapshot),
     deleteOwnedEvent: remove ?? vi.fn().mockResolvedValue(null),
   }
@@ -33,10 +33,9 @@ function setup({ session = { user: { is_anonymous: false } }, events = [], creat
 
 const flush = () => new Promise(resolve => setTimeout(resolve, 0))
 const dateAt = offset => { const date = new Date(); date.setDate(date.getDate() + offset); return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}` }
-const fillCreateForm = () => {
-  document.getElementById('newEventName').value = 'Friday Night Quiz'
-  document.getElementById('newEventVenue').value = 'The Oval'
-}
+const project = (id, extra = {}) => ({ id, name: id, room_code: 'ABC123', event_date: dateAt(0), status: 'lobby', created_at: '2026-10-23T10:00:00Z', started_at: null, games: ['guess_age', 'no_context', 'i_bet_you'], ...extra })
+const openModal = () => document.getElementById('newProjectButton').click()
+const submitProject = name => { if (name != null) document.getElementById('newProjectName').value = name; document.getElementById('newProjectForm').dispatchEvent(new SubmitEvent('submit', { bubbles: true, cancelable: true })) }
 
 describe('Admin top-level application states', () => {
   beforeEach(() => { window.gameNightRemoteSession = null })
@@ -59,74 +58,86 @@ describe('Admin top-level application states', () => {
     expect(document.getElementById('adminGateway').textContent).toContain('Sign in to Game Night')
   })
 
-  it('shows chooser but not Admin for a signed-in user without an active event', async () => {
-    const { application } = setup()
+  it('shows My Projects but not Admin for a signed-in Host without an open project', async () => {
+    const { application } = setup({ events: [project('Friday Quiz')] })
     await application.init()
     expect(application.getState()).toBe('choosing-event')
     expect(document.getElementById('adminApp').hidden).toBe(true)
-    expect(document.getElementById('adminGateway').hidden).toBe(false)
+    expect(document.querySelector('.gn-projects h1').textContent).toBe('My Projects')
+    expect(document.querySelector('.gn-projects-title p').textContent).toBe('Create, prepare and host your game nights.')
+    const card = document.querySelector('.gn-project[data-project-id="Friday Quiz"]')
+    expect(card.textContent).toContain('3 games'); expect(card.textContent).toContain('Planning'); expect(card.querySelector('.open-event').textContent).toContain('Open Project')
+    expect([...card.querySelectorAll('.gn-project-games li')].map(li => li.dataset.game)).toEqual(['guessAge', 'noContext', 'iBetYou'])
   })
 
-  it('successful creation activates Admin and removes the chooser', async () => {
-    const { application } = setup()
+  it('creates a project from just a name, with the recommended games, and opens it', async () => {
+    const { application, services } = setup()
     await application.init()
-    fillCreateForm()
-    const form = document.getElementById('createRemoteEvent'), button = document.getElementById('createEventButton')
-    form.dispatchEvent(new SubmitEvent('submit', { bubbles: true, cancelable: true, submitter: button })); await flush(); await flush()
+    openModal()
+    const modal = document.getElementById('newProjectModal')
+    expect(modal.hidden).toBe(false); expect(modal.querySelector('h2').textContent).toBe('Create a Project')
+    expect([...modal.querySelectorAll('input')].map(input => input.id)).toEqual(['newProjectName'])
+    expect(document.activeElement.id).toBe('newProjectName')
+    submitProject('  Friday Night Quiz  '); await flush(); await flush()
+    expect(services.createProject).toHaveBeenCalledWith(expect.anything(), { name: 'Friday Night Quiz', lineup: ['guess_age', 'no_context', 'i_bet_you'], eventDate: dateAt(0) })
     expect(application.getState()).toBe('active-event')
-    expect(document.getElementById('adminApp').hidden).toBe(false)
     expect(document.getElementById('adminGateway').hidden).toBe(true)
   })
 
-  it('selecting an existing event uses the same active transition', async () => {
-    const { application } = setup({ events: [{ id: 'event-1', name: 'Night', room_code: 'ABC123', event_date: dateAt(1), status: 'lobby' }] })
+  it('cancels the New Project modal without creating anything', async () => {
+    const { application, services } = setup(); await application.init()
+    openModal(); document.getElementById('cancelNewProject').click()
+    expect(document.getElementById('newProjectModal').hidden).toBe(true); expect(services.createProject).not.toHaveBeenCalled()
+    openModal(); document.getElementById('newProjectModal').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    expect(document.getElementById('newProjectModal').hidden).toBe(true)
+  })
+
+  it('offers a first-project card when there are no projects', async () => {
+    const { application } = setup(); await application.init()
+    document.getElementById('newProjectCard').click()
+    expect(document.getElementById('newProjectModal').hidden).toBe(false)
+  })
+
+  it('opening an existing project uses the same active transition', async () => {
+    const { application } = setup({ events: [project('event-1')] })
     await application.init(); document.querySelector('.open-event').click(); await flush(); await flush()
     expect(application.getState()).toBe('active-event')
     expect(document.getElementById('adminGateway').hidden).toBe(true)
     expect(document.getElementById('adminApp').hidden).toBe(false)
   })
-  it('requires confirmation before deleting an event from its overflow and then refreshes the chooser',async()=>{const remove=vi.fn().mockResolvedValue(null),events=[{id:'event-1',name:'Night',room_code:'ABC123',event_date:dateAt(1),status:'lobby'}],{application,services}=setup({events,remove});window.confirm=vi.fn().mockReturnValue(false);await application.init();expect(document.querySelector('.event-overflow .delete-event')).not.toBeNull();expect(document.querySelector('.event-choice-actions>.delete-event')).toBeNull();document.querySelector('.delete-event').click();await flush();expect(remove).not.toHaveBeenCalled();window.confirm.mockReturnValue(true);document.querySelector('.delete-event').click();await flush();await flush();expect(remove).toHaveBeenCalledWith(expect.anything(),'event-1');expect(services.listOwnedEvents).toHaveBeenCalledTimes(2)})
 
-  it('separates past events into a collapsed archive with the correct count', async () => {
+  it('requires confirmation before deleting a project from its menu and then refreshes My Projects',async()=>{const remove=vi.fn().mockResolvedValue(null),{application,services}=setup({events:[project('event-1')],remove});window.confirm=vi.fn().mockReturnValue(false);await application.init();expect(document.querySelector('.event-overflow .delete-event').textContent).toBe('Delete project');document.querySelector('.delete-event').click();await flush();expect(remove).not.toHaveBeenCalled();window.confirm.mockReturnValue(true);document.querySelector('.delete-event').click();await flush();await flush();expect(remove).toHaveBeenCalledWith(expect.anything(),'event-1');expect(services.listProjects).toHaveBeenCalledTimes(2)})
+
+  it('archives hosted projects after their date but keeps projects in preparation', async () => {
     const events = [
-      {id:'today',name:'Today',room_code:'TOD123',event_date:dateAt(0),status:'lobby'},
-      {id:'future',name:'Future',room_code:'FUT123',event_date:dateAt(2),status:'lobby'},
-      {id:'past',name:'Past',room_code:'PAS123',event_date:dateAt(-1),status:'completed'},
+      project('Today'), project('Prepared earlier', { event_date: dateAt(-5) }),
+      project('Hosted last week', { event_date: dateAt(-7), started_at: '2026-10-16T19:00:00Z' }),
+      project('Legacy played', { event_date: dateAt(-30), status: 'round_complete', games: [] }),
     ]
     const { application } = setup({ events }); await application.init()
-    expect(document.getElementById('ownedEvents').textContent).toContain('Today')
-    expect(document.getElementById('ownedEvents').textContent).toContain('Future')
-    expect(document.getElementById('ownedEvents').textContent).not.toContain('Past')
-    expect(document.querySelector('.archived-events').open).toBe(false)
-    expect(document.querySelector('.archived-events>summary').textContent).toBe('View archived (1)')
-    expect(document.getElementById('archivedEventList').textContent).toContain('Past')
+    const current = document.getElementById('ownedEvents').textContent
+    expect(current).toContain('Today'); expect(current).toContain('Prepared earlier'); expect(current).not.toContain('Hosted last week')
+    expect(document.querySelector('.gn-archived').open).toBe(false)
+    expect(document.querySelector('.gn-archived>summary').textContent).toBe('Archived Projects (2)')
+    expect(document.getElementById('archivedEventList').textContent).toContain('Legacy played')
+    expect(document.getElementById('archivedEventList').textContent).toContain('No games yet')
   })
 
-  it('opens an archived event without mutating it first', async () => {
-    const events = [{id:'past',name:'Past',room_code:'PAS123',event_date:dateAt(-1),status:'completed'}]
-    const { application, services } = setup({ events }); await application.init()
+  it('opens an archived project without mutating it first', async () => {
+    const { application, services } = setup({ events: [project('past', { event_date: dateAt(-1), status: 'round_complete' })] }); await application.init()
     document.querySelector('#archivedEventList .open-event').click(); await flush(); await flush()
     expect(services.hydrateHostEvent).toHaveBeenCalledWith(expect.anything(), 'past')
     expect(application.getState()).toBe('active-event')
   })
 
-  it('starts creation fields empty, defaults date locally, and omits Expected Teams', async () => {
-    const { application } = setup(); await application.init()
-    expect(document.getElementById('newEventName').value).toBe('')
-    expect(document.getElementById('newEventVenue').value).toBe('')
-    expect(document.getElementById('newEventDate').value).toBe(dateAt(0))
-    expect(document.getElementById('newExpectedTeams')).toBeNull()
-  })
-
-  it('prevents blank event names with a friendly message', async () => {
+  it('requires a project name', async () => {
     const create = vi.fn(), { application } = setup({ create }); await application.init()
-    const form = document.getElementById('createRemoteEvent'), button = document.getElementById('createEventButton')
-    form.dispatchEvent(new SubmitEvent('submit', { bubbles: true, cancelable: true, submitter: button })); await flush()
+    openModal(); submitProject('   '); await flush()
     expect(create).not.toHaveBeenCalled()
-    expect(document.getElementById('gatewayError').textContent).toContain('Enter an event name')
+    expect(document.getElementById('newProjectError').textContent).toBe('Give your project a name.')
   })
 
-  it('Switch event returns to chooser and hides Admin', async () => {
+  it('returns to My Projects and hides Admin', async () => {
     const { application } = setup()
     await application.init(); await application.openEvent('event-1'); await application.backToEvents()
     expect(application.getState()).toBe('choosing-event')
@@ -134,31 +145,40 @@ describe('Admin top-level application states', () => {
     expect(document.getElementById('adminGateway').hidden).toBe(false)
   })
 
-  it('prevents duplicate create submissions while one is pending', async () => {
+  it('prevents duplicate create submissions while one is pending, and allows creating again afterwards', async () => {
     const pending = deferred(), create = vi.fn(() => pending.promise)
     const { application } = setup({ create })
     await application.init()
-    fillCreateForm()
-    const form = document.getElementById('createRemoteEvent'), button = document.getElementById('createEventButton')
-    const submit = () => form.dispatchEvent(new SubmitEvent('submit', { bubbles: true, cancelable: true, submitter: button }))
-    submit(); submit(); await flush()
+    openModal(); submitProject('Friday Night Quiz'); submitProject(); await flush()
     expect(create).toHaveBeenCalledTimes(1)
-    expect(button.disabled).toBe(true)
-    expect(button.textContent).toContain('Creating game night')
+    expect(document.getElementById('createProjectSubmit').disabled).toBe(true)
+    expect(document.getElementById('createProjectSubmit').textContent).toBe('Creating…')
     pending.resolve('event-1'); await flush(); await flush()
+    await application.backToEvents(); openModal()
+    expect(document.getElementById('newProjectModal').hidden).toBe(false)
   })
 
-  it('restores the create form and shows a safe error after failure', async () => {
+  it('keeps the modal open with a safe error after a failure', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
     const { application } = setup({ create: vi.fn().mockRejectedValue(new Error('sensitive backend detail')) })
     await application.init()
-    fillCreateForm()
-    const form = document.getElementById('createRemoteEvent'), button = document.getElementById('createEventButton')
-    form.dispatchEvent(new SubmitEvent('submit', { bubbles: true, cancelable: true, submitter: button })); await flush()
+    openModal(); submitProject('Friday Night Quiz'); await flush()
     expect(application.getState()).toBe('choosing-event')
-    expect(button.disabled).toBe(false)
-    expect(button.textContent).toBe('Create Game Night')
-    expect(document.getElementById('gatewayError').textContent).toContain('Could not create the event')
-    expect(document.getElementById('gatewayError').textContent).not.toContain('sensitive backend detail')
+    expect(document.getElementById('newProjectModal').hidden).toBe(false)
+    expect(document.getElementById('createProjectSubmit').disabled).toBe(false)
+    expect(document.getElementById('createProjectSubmit').textContent).toBe('Create Project →')
+    expect(document.getElementById('newProjectError').textContent).toContain('Nothing was saved')
+    expect(document.getElementById('newProjectError').textContent).not.toContain('sensitive backend detail')
+    expect(document.getElementById('newProjectName').value).toBe('Friday Night Quiz')
+  })
+
+  it('explains a missing database update instead of a generic failure', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const missing = Object.assign(new Error('Could not find the function public.create_project(p_event_date, p_game_types, p_name) in the schema cache'), { code: 'PGRST202' })
+    const { application } = setup({ create: vi.fn().mockRejectedValue(missing) })
+    await application.init()
+    openModal(); submitProject('Friday Night Quiz'); await flush()
+    expect(document.getElementById('newProjectError').textContent).toContain('missing an update this screen needs (create_project)')
   })
 
   it('ignores unchanged recovery polls but still applies and keeps polling for genuine updates', async () => {

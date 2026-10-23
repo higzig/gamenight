@@ -34,10 +34,12 @@ describe('Server running order', () => {
     expect(adoptedLineup({ rounds: [{ game_type: 'guess_age', position: 3 }], no_context: { round: { game_type: 'no_context', position: 1 } } }, null)).toEqual(['noContext', 'guessAge'])
     expect(adoptedLineup({}, null)).toEqual([])
   })
-  it('only allows Start Game Night with configured games', () => {
+  it('allows Start Game Night with any game, while naming games that still need setup', () => {
     expect(nightStartCheck([])).toMatchObject({ canStart: false, reason: 'Add at least one game to start the night.' })
-    expect(nightStartCheck([{ type: 'perfectLie', state: 'needs_setup' }, { type: 'guessAge', state: 'ready' }])).toMatchObject({ canStart: false, reason: 'Finish setting up Table of Lies first.' })
-    expect(nightStartCheck([{ type: 'guessAge', state: 'ready' }])).toMatchObject({ canStart: true })
+    const check = nightStartCheck([{ type: 'perfectLie', state: 'needs_setup' }, { type: 'guessAge', state: 'ready' }])
+    expect(check).toMatchObject({ canStart: true, reason: 'Table of Lies still needs setting up before it starts.' })
+    expect(check.blocking.map(game => game.type)).toEqual(['perfectLie'])
+    expect(nightStartCheck([{ type: 'guessAge', state: 'ready' }])).toMatchObject({ canStart: true, reason: '', blocking: [] })
   })
 })
 

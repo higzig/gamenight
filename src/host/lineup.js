@@ -45,10 +45,10 @@ export function adoptedLineup(snapshot, storedPlan) {
   return unique(rounds.sort((a, b) => (a.position || 99) - (b.position || 99)).map(round => TYPE_FOR_GAME_TYPE[round.game_type]))
 }
 
-// Start Game Night needs at least one game, and every game must be configured.
+// Hosting mode needs one game. Games still being set up do not block it (teams can join
+// meanwhile); each game cannot start until its own setup is complete.
 export function nightStartCheck(games) {
   if (!games.length) return { canStart: false, reason: 'Add at least one game to start the night.', blocking: [] }
   const blocking = games.filter(game => game.state === 'needs_setup')
-  if (blocking.length) return { canStart: false, reason: `Finish setting up ${blocking.map(game => GAME_CATALOG[game.type].name).join(' and ')} first.`, blocking }
-  return { canStart: true, reason: '', blocking: [] }
+  return { canStart: true, reason: blocking.length ? `${blocking.map(game => GAME_CATALOG[game.type].name).join(' and ')} still ${blocking.length === 1 ? 'needs' : 'need'} setting up before ${blocking.length === 1 ? 'it starts' : 'they start'}.` : '', blocking }
 }

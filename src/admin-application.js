@@ -1,4 +1,6 @@
-import { classifyEvents, formatEventDate, humanEventStatus, localCalendarDate } from './event-chooser.js'
+import { localCalendarDate } from './event-chooser.js'
+import { friendlyHostError } from './host/action-runner.js'
+import { classifyProjects, projectsMarkup } from './host/projects.js'
 import { isSnapshotChange, realtimeRecovery, shouldPollEvent, snapshotFingerprint, stateVersion } from './state-sync.js'
 import { RECOMMENDED_LINEUP, toGameTypes } from './host/game-catalog.js'
 
@@ -65,51 +67,56 @@ export function createAdminApplication({
     }
   }
 
-  const createEventForm = () => `<form class="auth-form create-event-form" id="createRemoteEvent"><label>Event name<input id="newEventName" maxlength="120" required placeholder="e.g. Friday Night Quiz"></label><label>Venue <span class="optional">Optional</span><input id="newEventVenue" maxlength="160" placeholder="e.g. The Oval"></label><label>Date<input id="newEventDate" type="date" required value="${localCalendarDate()}"></label><button class="btn primary" id="createEventButton" type="submit">Create Game Night</button></form>`
-
-  const eventRow = event => `<div class="event-choice" data-event-id="${esc(event.id)}"><div class="event-choice-details"><strong>${esc(event.name)}</strong><span>${esc(formatEventDate(event.event_date))} · ${esc(humanEventStatus(event.status))} · ${esc(event.room_code)}</span></div><div class="event-choice-actions"><button class="btn secondary open-event" data-id="${esc(event.id)}">Open</button><details class="event-overflow"><summary class="icon-btn" aria-label="More actions for ${esc(event.name)}">•••</summary><div><button class="delete-event danger-link" data-id="${esc(event.id)}" data-name="${esc(event.name)}">Delete event</button></div></details></div></div>`
-
   async function renderEventChooser() {
     transition('choosing-event')
+    createPending = false
     try {
-      const events = await services.listOwnedEvents(client)
-      const { current, archived } = classifyEvents(events)
-      card(`<p class="eyebrow">YOUR EVENTS</p><h1>Choose a Game Night</h1><p>Open a current event or create a new six-character room.</p>
-        <section class="event-list-section"><h2>Current & upcoming</h2><div id="ownedEvents">${current.map(eventRow).join('') || '<p class="event-list-empty">No current or upcoming events.</p>'}</div></section>
-        ${archived.length ? `<details class="archived-events"><summary>View archived (${archived.length})</summary><div id="archivedEventList">${archived.map(eventRow).join('')}</div></details>` : ''}
-        <section class="create-event-section"><h2>Create event</h2>${createEventForm()}<p class="auth-error" id="gatewayError"></p></section><div class="auth-actions"><button class="btn ghost" id="chooserLogout">Log out</button></div>`, 'event-chooser-card')
+      const { current, archived } = classifyProjects(await services.listProjects(client))
+      gateway.innerHTML = projectsMarkup({ current, archived })
       doc.querySelectorAll('.open-event').forEach(button => button.onclick = () => openEvent(button.dataset.id))
-      doc.querySelectorAll('.delete-event').forEach(button => button.onclick = async () => {if(!win.confirm(`Delete “${button.dataset.name}” permanently? Teams, rounds, submissions, and scores for this event will be removed.`))return;button.disabled=true;button.textContent='Deleting…';try{await services.deleteOwnedEvent(client,button.dataset.id);await renderEventChooser()}catch(error){console.error(error);button.disabled=false;button.textContent='Delete';errorTarget('Could not delete that event. Refresh and try again.')}})
+      doc.querySelectorAll('.delete-event').forEach(button => button.onclick = async () => {if(!win.confirm(`Delete “${button.dataset.name}” permanently? Its teams, games, answers and scores will be removed.`))return;button.disabled=true;button.textContent='Deleting…';try{await services.deleteOwnedEvent(client,button.dataset.id);await renderEventChooser()}catch(error){console.error(error);button.disabled=false;button.textContent='Delete project';errorTarget(friendlyHostError(error,'Could not delete that project. Refresh and try again.'))}})
       doc.getElementById('chooserLogout').onclick = logout
-      doc.getElementById('createRemoteEvent').onsubmit = handleCreateEvent
+      doc.getElementById('newProjectButton').onclick = openNewProject
+      if (doc.getElementById('newProjectCard')) doc.getElementById('newProjectCard').onclick = openNewProject
+      doc.getElementById('cancelNewProject').onclick = closeNewProject
+      doc.getElementById('newProjectBackdrop').onclick = closeNewProject
+      doc.getElementById('newProjectForm').onsubmit = handleCreateProject
+      doc.getElementById('newProjectModal').onkeydown = event => { if (event.key === 'Escape') closeNewProject() }
     } catch (error) {
-      console.error(error); renderSignIn('Could not load Host events.')
+      console.error(error); renderSignIn(friendlyHostError(error, 'Could not load your projects.'))
     }
   }
 
-  async function handleCreateEvent(event) {
+  function openNewProject() {
+    if (createPending) return
+    doc.getElementById('newProjectModal').hidden = false; doc.getElementById('newProjectBackdrop').hidden = false
+    doc.getElementById('newProjectError').hidden = true
+    doc.getElementById('newProjectName').focus()
+  }
+
+  function closeNewProject() {
+    if (createPending) return
+    doc.getElementById('newProjectModal').hidden = true; doc.getElementById('newProjectBackdrop').hidden = true
+    doc.getElementById('newProjectButton').focus()
+  }
+
+  async function handleCreateProject(event) {
     event.preventDefault()
     if (createPending) return
-    const name = doc.getElementById('newEventName').value.trim()
-    const eventDate = doc.getElementById('newEventDate').value
-    if (!name) return errorTarget('Enter an event name before creating the game night.')
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(eventDate)) return errorTarget('Choose a valid event date.')
-    createPending = true; errorTarget('')
-    const button = doc.getElementById('createEventButton')
-    button.disabled = true; button.textContent = 'Creating game night…'
+    const input = doc.getElementById('newProjectName'), error = doc.getElementById('newProjectError'), button = doc.getElementById('createProjectSubmit')
+    const name = input.value.trim()
+    const fail = message => { error.textContent = message; error.hidden = false; input.focus() }
+    if (!name) return fail('Give your project a name.')
+    createPending = true; error.hidden = true
+    button.disabled = true; button.textContent = 'Creating…'; doc.getElementById('cancelNewProject').disabled = true
     try {
-      const id = await services.createJoinableEvent(client, {
-        name,
-        venue: doc.getElementById('newEventVenue').value.trim(),
-        eventDate,
-        // Only newly created nights get the recommended games.
-        lineup: toGameTypes(RECOMMENDED_LINEUP),
-      })
+      // New projects get the recommended games in the same transaction that creates them.
+      const id = await services.createProject(client, { name, lineup: toGameTypes(RECOMMENDED_LINEUP), eventDate: localCalendarDate() })
       await openEvent(id)
-    } catch (error) {
-      console.error(error)
-      createPending = false; button.disabled = false; button.textContent = 'Create Game Night'
-      errorTarget('Could not create the event. Check the details and try again. No additional attempt was made.')
+    } catch (failure) {
+      console.error(failure)
+      createPending = false; button.disabled = false; button.textContent = 'Create Project →'; doc.getElementById('cancelNewProject').disabled = false
+      fail(friendlyHostError(failure, 'Could not create the project. Nothing was saved, so you can safely try again.'))
     }
   }
 

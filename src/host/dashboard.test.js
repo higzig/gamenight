@@ -7,11 +7,13 @@ const model = extra => ({ event: { name: 'Quiz <Night>', venue: 'The Oval', date
 const render = extra => { document.body.innerHTML = dashboardMarkup(model(extra)); return document.body }
 
 describe('Dashboard markup', () => {
-  it('escapes Host text and shows the event, room and teams', () => {
+  it('keeps one heading for the project and shows status, room and teams compactly', () => {
     const root = render()
-    expect(root.querySelector('.gn-hero h2').textContent).toBe('Quiz <Night>')
+    expect(root.querySelector('.gn-hero h1, .gn-hero h2')).toBeNull()
+    expect(root.querySelector('.gn-night-pill').textContent).toBe('Planning')
     expect(root.querySelector('[data-action="copy-link"]').textContent).toContain('ABC123')
     expect(root.querySelector('[data-action="teams"]').textContent).toContain('3')
+    expect(render({ started: true }).querySelector('.gn-night-pill').textContent).toBe('Hosting')
   })
   it('labels every status and only lets upcoming games be edited, replaced, removed or reordered', () => {
     const games = ['needs_setup', 'ready', 'live', 'paused', 'complete'].map((state, i) => game(['perfectLie', 'guessAge', 'noContext', 'iBetYou', 'guessAge'][i], state, { position: i + 1 }))

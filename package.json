@@ -1,6 +1,10 @@
 {
   "scripts": {
     "dev": "vite",
+    "local": "supabase start > /dev/null && vite",
+    "db:start": "supabase start",
+    "db:stop": "supabase stop",
+    "db:status": "supabase status",
     "build": "vite build",
     "deploy": "wrangler deploy",
     "release": "node scripts/release.mjs",
@@ -9,6 +13,7 @@
   },
   "devDependencies": {
     "jsdom": "^30.0.1",
+    "pg": "^8.13.1",
     "supabase": "^2.114.0",
     "vite": "^8.2.1",
     "vitest": "^4.1.10",

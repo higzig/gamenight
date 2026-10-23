@@ -1,0 +1,35 @@
+{
+  // Game Night local development. Run with Terminal → Run Task… (or ⇧⌘B for the default).
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Game Night: Start local",
+      "detail": "Start local Supabase (Docker must be running), then the Vite dev server.",
+      "type": "npm",
+      "script": "local",
+      "isBackground": true,
+      "group": { "kind": "build", "isDefault": true },
+      "presentation": { "reveal": "always", "panel": "dedicated" },
+      "problemMatcher": {
+        "owner": "vite",
+        "pattern": { "regexp": "^__never_matches__$" },
+        "background": { "activeBegin": "supabase|VITE", "activeEnd": "Local:\\s+http" }
+      }
+    },
+    {
+      "label": "Game Night: Stop local Supabase",
+      "detail": "Stop the local Supabase containers. Stop Vite with the trash icon on its terminal.",
+      "type": "npm",
+      "script": "db:stop",
+      "problemMatcher": []
+    },
+    {
+      "label": "Game Night: Run all tests",
+      "detail": "Frontend tests, then database tests against local Supabase.",
+      "type": "shell",
+      "command": "npm test && npx supabase test db",
+      "group": "test",
+      "problemMatcher": []
+    }
+  ]
+}

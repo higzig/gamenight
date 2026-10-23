@@ -74,6 +74,8 @@ function loadNight(){
     nightEventId=snapshot.event.id;nightScreen='auto';editorDraft=null;editingRoundId=null;perfectLieBrowseQuestionId='';perfectLieObservedQuestionId=null;lastStatuses=new Map();closeModal();
     const stored=storedPlan(nightEventId)||{};nightPrefs={finished:Boolean(stored.finished),audienceManual:Boolean(stored.audienceManual)};
   }
+  // An older database returns no running order at all. Say so; never fall back to browser storage.
+  if(!('lineup' in snapshot))showHostError('Game Night’s database is missing an update this screen needs (event running order). Apply the latest database migrations, then reload the page.');
   // A night created before the running order moved to the server adopts its earlier order once.
   if(snapshot.lineup&&!lineupSaved(snapshot)&&!adoptedEvents.has(nightEventId)){
     adoptedEvents.add(nightEventId);const types=adoptedLineup(snapshot,storedPlan(nightEventId));
@@ -196,7 +198,7 @@ function bindEventFields(){
   const remote=remoteSession()?.event;
   if(remote){
     state.event={...state.event,name:remote.name,venue:remote.venue,date:remote.event_date,roomCode:remote.room_code};
-    $('#eventTitle').textContent=remote.name;$('#eventStatusLine').textContent=`Room ${remote.room_code} · ${remoteTeams().filter(t=>t.status==='active').length} teams`;
+    $('#eventTitle').textContent=remote.name;$('#eventStatusLine').textContent=[remote.event_date?formatEventDate(remote.event_date):'',remote.venue].filter(Boolean).join(' · ');
     return;
   }
   // Local prototype only.
@@ -495,7 +497,7 @@ function init(){
   $('#resetDemo').onclick=()=>{if(confirm('Reset the prototype back to the demo event?')){localStorage.removeItem(STORE_KEY);localStorage.removeItem(LEGACY_KEY);location.reload()}};
   $('#closeModal').onclick=closeModal;$('#modalBackdrop').onclick=closeModal;$('#configBack').onclick=()=>closeEditor();$('#cancelConfig').onclick=()=>closeEditor();$('#doneRound').onclick=saveGameSettings;$('#hostAlertDismiss').onclick=clearHostError;$('#addTeam').onclick=addTeam;
   $('#logoutHost').onclick=()=>window.dispatchEvent(new Event('game-night-host-logout'));
-  $('#switchEvent').onclick=()=>window.dispatchEvent(new Event('game-night-switch-events'));
+  $('#switchEvent').onclick=$('#backToProjects').onclick=()=>window.dispatchEvent(new Event('game-night-switch-events'));
   $('#headerAudience').onclick=()=>{const event=remoteSession()?.event;window.open(event?`audience.html?room=${encodeURIComponent(event.room_code)}`:'audience.html','gameNightAudience')};
   $('#leaderboardAudience').onclick=()=>remoteSession()?window.gameNightSupabaseActions.setDisplay('leaderboard'):nightView();
   window.addEventListener('storage',e=>{if(!remoteSession()&&e.key===STORE_KEY&&e.newValue){state=migrate(JSON.parse(e.newValue));renderLeaderboard();renderLiveControl()}});

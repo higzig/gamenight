@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { saveIBetYouSettings,selectHostedGame,resumeHostedGame,challengeIBetYou, createJoinableEvent, deleteOwnedEvent, setEventLineup, startGameNight, isAnonymousUser, judgeIBetYouGroup, saveGuessAgeRound,savePerfectLieRound, setIBetYouBid, setupIBetYouRound,startPerfectLieQuestion, startIBetYouTimer, uploadCelebrityImage } from './host-service.js'
+import { saveIBetYouSettings,selectHostedGame,resumeHostedGame,challengeIBetYou, createJoinableEvent, createProject, listProjects, deleteOwnedEvent, setEventLineup, startGameNight, isAnonymousUser, judgeIBetYouGroup, saveGuessAgeRound,savePerfectLieRound, setIBetYouBid, setupIBetYouRound,startPerfectLieQuestion, startIBetYouTimer, uploadCelebrityImage } from './host-service.js'
 
 describe('Host service', () => {
   it('recognizes anonymous Auth users', () => {
@@ -63,5 +63,22 @@ describe('Running order services', () => {
     await setEventLineup({ rpc }, 'e', ['no_context'], 4)
     await startGameNight({ rpc }, 'e')
     expect(rpc.mock.calls).toEqual([['set_event_lineup', { p_event_id: 'e', p_game_types: ['no_context'], p_expected_revision: 4 }], ['start_game_night', { p_event_id: 'e' }]])
+  })
+
+  it('creates a project and its running order in one RPC', async () => {
+    const rpc = vi.fn().mockResolvedValue({ data: 'project-id', error: null })
+    expect(await createProject({ rpc }, { name: 'Quiz', lineup: ['guess_age', 'no_context', 'i_bet_you'], eventDate: '2026-10-23' })).toBe('project-id')
+    expect(rpc).toHaveBeenCalledTimes(1)
+    expect(rpc).toHaveBeenCalledWith('create_project', { p_name: 'Quiz', p_game_types: ['guess_age', 'no_context', 'i_bet_you'], p_event_date: '2026-10-23' })
+  })
+
+  it('surfaces a failed project creation instead of hiding it', async () => {
+    const error = Object.assign(new Error('missing'), { code: 'PGRST202' })
+    await expect(createProject({ rpc: vi.fn().mockResolvedValue({ data: null, error }) }, { name: 'Quiz', lineup: [] })).rejects.toBe(error)
+  })
+
+  it('lists projects through their own RPC', async () => {
+    const rpc = vi.fn().mockResolvedValue({ data: [{ id: 'p' }], error: null })
+    expect(await listProjects({ rpc })).toEqual([{ id: 'p' }]); expect(rpc).toHaveBeenCalledWith('list_projects', {})
   })
 })

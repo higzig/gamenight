@@ -121,12 +121,29 @@ describe('Planning dashboard',()=>{
 })
 
 describe('Starting the night',()=>{
- it('blocks Start Game Night until every game is set up, and links to the missing setup',async()=>{
-  setLineupState(['guess_age','perfect_lie']);await import('../admin.js')
-  expect(act('start-night').disabled).toBe(true)
-  expect(document.getElementById('startNightReason').textContent).toContain('Finish setting up Table of Lies')
-  document.querySelector('#startNightReason [data-action="edit"][data-type="perfectLie"]').click()
+ it('lets the night start while a game still needs setup, but not that game',async()=>{
+  setLineupState(['perfect_lie','guess_age']);await import('../admin.js')
+  expect(act('start-night').disabled).toBe(false)
+  expect(document.getElementById('startNightReason').textContent).toContain('Table of Lies still needs setting up')
+  act('start-night').click();await flush()
+  expect(actions.startGameNight).toHaveBeenCalledTimes(1)
+  expect(document.querySelector('.gn-hero [data-action="edit"][data-type="perfectLie"]').textContent).toContain('Set up Table of Lies')
+  act('edit','perfectLie').click()
   expect(document.getElementById('nightConfigure').hidden).toBe(false);expect(document.getElementById('configIdentity').textContent).toContain('Table of Lies')
+  expect(actions.selectGame).not.toHaveBeenCalled()
+ })
+ it('explains a database without the running-order update instead of showing an empty night',async()=>{
+  delete snapshot.lineup;await import('../admin.js');await flush()
+  expect(document.getElementById('hostAlert').hidden).toBe(false)
+  expect(document.getElementById('hostAlertText').textContent).toContain('missing an update this screen needs')
+  expect(actions.setLineup).not.toHaveBeenCalled();expect(storage.has('gameNightPlan:e')).toBe(false)
+ })
+ it('shows the real cause when the running-order RPC is missing',async()=>{
+  actions.setLineup.mockRejectedValueOnce(Object.assign(new Error('Could not find the function public.set_event_lineup(p_event_id, p_expected_revision, p_game_types) in the schema cache'),{code:'PGRST202'}))
+  await import('../admin.js')
+  document.querySelector('#nightOverview [data-action="add"]').click();document.querySelector('[data-library-pick="perfectLie"]').click();await flush()
+  expect(document.getElementById('hostAlertText').textContent).toBe('Game Night’s database is missing an update this screen needs (set_event_lineup). Apply the latest database migrations, then reload the page.')
+  expect(cards()).toEqual(['guessAge','noContext','iBetYou'])
  })
  it('starts the night on the server, then offers the first game',async()=>{
   setupGuess();snapshot.event.active_round_id=null;await import('../admin.js')

@@ -7,6 +7,8 @@ describe('Host action feedback', () => {
     expect(friendlyHostError({ code: '42501', message: 'event owner required' })).toContain('permission')
     expect(friendlyHostError(new TypeError('Failed to fetch'))).toContain('Check the connection')
     expect(friendlyHostError({ code: 'P0001', message: 'invalid event transition' }, 'Could not start.')).toBe('Could not start.')
+    expect(friendlyHostError({ code: 'PGRST202', message: 'Could not find the function public.set_event_lineup(p_event_id, p_expected_revision, p_game_types) in the schema cache' })).toContain('(set_event_lineup)')
+    expect(friendlyHostError({ code: '42883', message: 'function public.create_project(text) does not exist' })).toContain('(create_project)')
   })
   it('blocks duplicate submissions and reports failures', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {})

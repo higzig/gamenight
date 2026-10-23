@@ -26,6 +26,15 @@ export async function createJoinableEvent(client, fields) {
   return created.id
 }
 
+// One transaction: the project exists with its running order, or it does not exist at all.
+export function createProject(client, { name, lineup, eventDate }) {
+  return rpc(client, 'create_project', { p_name: name, p_game_types: lineup, p_event_date: eventDate ?? null })
+}
+
+export function listProjects(client) {
+  return rpc(client, 'list_projects', {})
+}
+
 // Running order only: never creates rounds or changes the active game.
 export function setEventLineup(client, eventId, gameTypes, expectedRevision) {
   return rpc(client, 'set_event_lineup', { p_event_id: eventId, p_game_types: gameTypes, p_expected_revision: expectedRevision ?? null })
