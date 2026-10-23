@@ -1,5 +1,7 @@
 import {lineupValidationError} from './celebrity-library.js'
 import {perfectLieValidationError,perfectLiePayload} from './perfect-lie.js'
+import {GAME_CATALOG,STARTER_CELEBRITIES,TYPE_FOR_GAME_TYPE} from './host/game-catalog.js'
+import {serverLineupTypes} from './host/lineup.js'
 
 export const GAME_TYPES={guessAge:'guess_age',perfectLie:'perfect_lie',iBetYou:'i_bet_you',noContext:'no_context'}
 export const PLAN_PREFIX='gameNightPlan:'
@@ -39,37 +41,31 @@ export function setupError(game,snapshot){
   }
   return null
 }
-export function nightGames(snapshot,plan){
-  return plan.games.filter(g=>GAME_TYPES[g.type]).map(game=>{
-    const remote=serverGame(snapshot,game.type),progress=gameProgress(snapshot,game.type)
-    // Retain legacy browser progress until a server checkpoint supersedes it.
-    const remembered=plan.progress?.[game.type]
-    const status=game.awaitingStart&&progress==='complete'?'upcoming':progress!=='upcoming'?progress:remembered||'upcoming'
-    return {...game,remote,status,error:setupError(game,snapshot),editable:status==='upcoming'}
-  })
+// Each game's configuration comes from the server, or the Host's saved defaults before first save.
+export function gameSettings(snapshot,type){
+  const remote=serverGame(snapshot,type)
+  if(type==='guessAge')return {timer:15,points:'bands',celebrities:remote?.questions?.length?remote.questions.map(q=>({id:q.celebrity_id,questionId:q.id,name:q.celebrity_name,dob:q.date_of_birth,imageKind:q.image_kind,imagePath:q.image_path,image:q.external_image_url||'',imageSourceKind:q.image_source,sourceReference:q.source_reference,libraryStatus:q.celebrity_id?'existing':'new'})):guessAgeDefaults(snapshot,STARTER_CELEBRITIES)}
+  if(type==='perfectLie')return {categories:structuredClone(snapshot.perfect_lie?.categories||[])}
+  if(type==='iBetYou')return {seconds:60,winPoints:5,categories:iBetCategoryDefaults(snapshot)}
+  return {}
 }
-export function reconcilePlan(snapshot,plan,names){
-  const next=structuredClone(plan||{games:[],excluded:[],progress:{}})
-  next.games=next.games.filter(g=>GAME_TYPES[g.type]);next.excluded||=[];next.progress||={}
-  for(const [type,gameType]of Object.entries(GAME_TYPES)){
-    const remote=serverGame(snapshot,type);if(!remote)continue
-    const progress=gameProgress(snapshot,type)
-    if(progress!=='upcoming'&&!next.games.find(g=>g.type===type)?.awaitingStart)next.progress[type]=progress
-    if(next.excluded.includes(type)&&progress==='upcoming')continue
-    let game=next.games.find(g=>g.type===type)
-    if(!game){game={id:`plan-${gameType}`,type,title:remote.title||names[type],settings:{}};next.games.push(game)}
-    // Unsaved editor data is kept in a separate draft, never overwritten by polling.
-    game.title=remote.title||game.title||names[type]
-    if(type==='guessAge')game.settings={timer:15,points:'bands',celebrities:(remote.questions||[]).map(q=>({id:q.celebrity_id,questionId:q.id,name:q.celebrity_name,dob:q.date_of_birth,imageKind:q.image_kind,imagePath:q.image_path,image:q.external_image_url||'',imageSourceKind:q.image_source,sourceReference:q.source_reference,libraryStatus:q.celebrity_id?'existing':'new'}))}
-    if(type==='perfectLie'&&snapshot.perfect_lie.categories)game.settings={categories:structuredClone(snapshot.perfect_lie.categories)}
-  }
-  const savedCategories=snapshot.game_defaults?.i_bet_you
-  if(savedCategories?.saved_for_event){
-    let game=next.games.find(g=>g.type==='iBetYou')
-    if(!game&&!next.excluded.includes('iBetYou')){game={id:'plan-i_bet_you',type:'iBetYou',title:names.iBetYou,settings:{}};next.games.push(game)}
-    if(game)game.settings={...game.settings,categories:structuredClone(savedCategories.categories)}
-  }
-  return next
+// What a game still needs before it can be played (null when configured).
+export function configIssue(type,settings){
+  if(type==='guessAge')return lineupValidationError(settings.celebrities||[])?.replaceAll('syncing','saving')||null
+  if(type==='perfectLie')return (settings.categories||[]).some(c=>c.questions?.length)?perfectLieValidationError(settings.categories):'Add at least one question.'
+  if(type==='iBetYou')return categorySelectionError(settings.categories)
+  return null
+}
+// Tonight's games in server running order. status is gameplay progress (upcoming/live/paused/complete);
+// state adds configuration for display (needs_setup/ready/live/paused/complete).
+export function nightGames(snapshot){
+  const locked=new Map((snapshot.lineup?.games||[]).map(g=>[TYPE_FOR_GAME_TYPE[g.game_type],Boolean(g.locked)]))
+  return serverLineupTypes(snapshot).map((type,index)=>{
+    const remote=serverGame(snapshot,type),status=gameProgress(snapshot,type),settings=gameSettings(snapshot,type)
+    const issue=status==='upcoming'?configIssue(type,settings):null
+    const game={id:type,type,position:index+1,title:remote?.title||GAME_CATALOG[type].name,remote,settings,status,state:status==='upcoming'?(issue?'needs_setup':'ready'):status,configIssue:issue,locked:locked.get(type)||false}
+    return {...game,error:issue||setupError(game,snapshot),editable:status==='upcoming'&&!game.locked}
+  })
 }
 export async function startPlannedGame(game,{snapshot,actions,prompts}){
   const s=snapshot(),existing=serverGame(s,game.type)

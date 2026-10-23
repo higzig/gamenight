@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { saveIBetYouSettings,selectHostedGame,resumeHostedGame,challengeIBetYou, createJoinableEvent, deleteOwnedEvent, isAnonymousUser, judgeIBetYouGroup, saveGuessAgeRound,savePerfectLieRound, setIBetYouBid, setupIBetYouRound,startPerfectLieQuestion, startIBetYouTimer, uploadCelebrityImage } from './host-service.js'
+import { saveIBetYouSettings,selectHostedGame,resumeHostedGame,challengeIBetYou, createJoinableEvent, deleteOwnedEvent, setEventLineup, startGameNight, isAnonymousUser, judgeIBetYouGroup, saveGuessAgeRound,savePerfectLieRound, setIBetYouBid, setupIBetYouRound,startPerfectLieQuestion, startIBetYouTimer, uploadCelebrityImage } from './host-service.js'
 
 describe('Host service', () => {
   it('recognizes anonymous Auth users', () => {
@@ -37,3 +37,31 @@ describe('Host service', () => {
 it('keeps selection and explicit timer resume as separate host RPCs',async()=>{const rpc=vi.fn().mockResolvedValue({data:{},error:null});await selectHostedGame({rpc},'e','r');await resumeHostedGame({rpc},'e','r');expect(rpc.mock.calls).toEqual([['select_hosted_game',{p_event_id:'e',p_round_id:'r'}],['resume_hosted_game',{p_event_id:'e',p_round_id:'r'}]])})
 
 it('saves selected existing categories and keeps deselected custom drafts in the library',async()=>{const rpc=vi.fn().mockResolvedValue({data:{},error:null});await saveIBetYouSettings({rpc},'e',[{id:'a',title:'Films',selected:true},{id:'b',title:'Comics',selected:false},{title:'Irish comedians',selected:true},{title:'Local pubs',selected:false}]);expect(rpc).toHaveBeenCalledWith('save_i_bet_you_settings',{p_event_id:'e',p_category_ids:['a'],p_custom_categories:[{title:'Irish comedians',selected:true},{title:'Local pubs',selected:false}]})})
+
+describe('Running order services', () => {
+  it('adds the recommended games to a newly created night through the lineup RPC only', async () => {
+    const rpc = vi.fn()
+      .mockResolvedValueOnce({ data: { id: 'event-id' }, error: null })
+      .mockResolvedValueOnce({ data: {}, error: null })
+      .mockResolvedValueOnce({ data: {}, error: null })
+    await createJoinableEvent({ rpc }, { name: 'Night', venue: '', eventDate: '2026-10-23', lineup: ['guess_age', 'no_context', 'i_bet_you'] })
+    expect(rpc.mock.calls.map(([name]) => name)).toEqual(['create_event', 'open_event_lobby', 'set_event_lineup'])
+    expect(rpc).toHaveBeenLastCalledWith('set_event_lineup', { p_event_id: 'event-id', p_game_types: ['guess_age', 'no_context', 'i_bet_you'], p_expected_revision: null })
+  })
+
+  it('still opens a created night if its lineup cannot be saved', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const rpc = vi.fn()
+      .mockResolvedValueOnce({ data: { id: 'event-id' }, error: null })
+      .mockResolvedValueOnce({ data: {}, error: null })
+      .mockResolvedValueOnce({ data: null, error: new Error('offline') })
+    await expect(createJoinableEvent({ rpc }, { name: 'Night', venue: '', eventDate: '2026-10-23', lineup: ['guess_age'] })).resolves.toBe('event-id')
+  })
+
+  it('sends lineup revisions and starts the night', async () => {
+    const rpc = vi.fn().mockResolvedValue({ data: {}, error: null })
+    await setEventLineup({ rpc }, 'e', ['no_context'], 4)
+    await startGameNight({ rpc }, 'e')
+    expect(rpc.mock.calls).toEqual([['set_event_lineup', { p_event_id: 'e', p_game_types: ['no_context'], p_expected_revision: 4 }], ['start_game_night', { p_event_id: 'e' }]])
+  })
+})

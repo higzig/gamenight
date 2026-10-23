@@ -20,7 +20,19 @@ export async function createJoinableEvent(client, fields) {
   if (createError) throw createError
   const { error: lobbyError } = await client.rpc('open_event_lobby', { p_event_id: created.id })
   if (lobbyError) throw lobbyError
+  // The event already exists, so a failed lineup save must not look like a failed creation
+  // (a retry would create a second night). The Host can still add games from the dashboard.
+  if (fields.lineup?.length) await setEventLineup(client, created.id, fields.lineup, null).catch(console.error)
   return created.id
+}
+
+// Running order only: never creates rounds or changes the active game.
+export function setEventLineup(client, eventId, gameTypes, expectedRevision) {
+  return rpc(client, 'set_event_lineup', { p_event_id: eventId, p_game_types: gameTypes, p_expected_revision: expectedRevision ?? null })
+}
+
+export function startGameNight(client, eventId) {
+  return rpc(client, 'start_game_night', { p_event_id: eventId })
 }
 
 export function deleteOwnedEvent(client, eventId) {

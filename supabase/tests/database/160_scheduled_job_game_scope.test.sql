@@ -33,8 +33,9 @@ select public.setup_no_context('a6000000-0000-0000-0000-000000000003','[{"instru
 reset role;select set_config('test.nc_play',(select active_play_id::text from public.no_context_games where event_id='a6000000-0000-0000-0000-000000000003'),true);
 set local role authenticated;select set_config('request.jwt.claims','{"sub":"16000000-0000-0000-0000-000000000001","role":"authenticated","is_anonymous":false}',true);
 select public.no_context_control('a6000000-0000-0000-0000-000000000003',current_setting('test.nc_play')::uuid,'start');
--- Saving a Guess the Age lineup selects it, which pauses No Context mid-responses.
-select public.save_guess_age_round('a6000000-0000-0000-0000-000000000003','Guess the Age','[{"celebrity_name":"Zendaya","date_of_birth":"1996-09-01"}]');
+-- Starting another game pauses No Context mid-responses.
+select set_config('test.nc_ga',public.save_guess_age_round('a6000000-0000-0000-0000-000000000003','Guess the Age','[{"celebrity_name":"Zendaya","date_of_birth":"1996-09-01"}]')::text,true);
+select public.select_hosted_game('a6000000-0000-0000-0000-000000000003',current_setting('test.nc_ga')::uuid);
 reset role;
 
 select set_config('test.tol_version',(select state_version::text from public.events where id='a6000000-0000-0000-0000-000000000001'),true);

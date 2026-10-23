@@ -40,13 +40,16 @@
         </div>
       </header>
 
+      <div id="hostAlert" class="host-alert" role="alert" hidden><p id="hostAlertText"></p><button class="icon-btn" id="hostAlertDismiss" aria-label="Dismiss message">×</button></div>
+
       <section id="view-night" class="view active">
-        <div id="nightOverview">
-          <div class="night-welcome"><div><p class="eyebrow">MAKE A NIGHT OF IT</p><h2>Your crowd. Your Game Night.</h2><p>Welcome your teams. Choose your games. Take the stage.</p></div><div class="join-ticket"><p class="eyebrow">TONIGHT’S ROOM</p><strong id="roomCode">—</strong><span id="connectedCount">0 teams registered</span><p>One Captain per table. One phone to play.</p><button class="btn secondary" id="copyTeamLink">Copy join link ↗</button></div></div>
-          <div id="nightRecommendation" aria-live="polite"></div>
-          <div class="section-heading"><div><p class="eyebrow">THE RUNNING ORDER</p><h2>Tonight’s Games</h2><p>Make it your night. Play in the order you choose.</p></div><button class="btn secondary" id="addRound">+ Add Game</button></div>
-          <div id="roundsList" class="rounds-list"></div>
-          <details class="night-details"><summary>Night details</summary><div class="form-grid"><label>Name<input id="eventName" type="text"></label><label>Venue<input id="venueName" type="text"></label><label>Date<input id="eventDate" type="date"></label></div></details>
+        <div id="nightOverview" class="gn-dashboard"></div>
+        <div id="nightConfigure" class="gn-config" hidden>
+          <button class="btn ghost gn-config-back" id="configBack">← Tonight’s Games</button>
+          <header class="gn-config-head" id="configIdentity"></header>
+          <p id="gameSettingsError" class="settings-error" role="alert" hidden></p>
+          <div id="drawerBody" class="drawer-body gn-config-body"></div>
+          <footer class="gn-config-footer"><p id="configNote">Changes apply when you press Save Game.</p><div class="gn-config-buttons"><button class="btn ghost" id="cancelConfig">Cancel</button><button class="btn primary" id="doneRound">Save Game</button></div></footer>
         </div>
         <div id="nightStage" hidden><div id="liveControl"></div></div>
       </section>
@@ -69,24 +72,9 @@
     </main>
   </div>
 
-  <div class="drawer-backdrop" id="drawerBackdrop"></div>
-  <aside class="drawer" id="roundDrawer" role="dialog" aria-modal="true" aria-labelledby="drawerTitle">
-    <div class="drawer-head">
-      <div><p class="eyebrow">GAME SETTINGS</p><h2 id="drawerTitle">Edit game</h2></div>
-      <button class="icon-btn" id="closeDrawer" aria-label="Close game settings">×</button>
-    </div>
-    <div id="gameTypeControl" class="game-type-control"></div>
-    <p id="gameSettingsError" class="settings-error" role="alert" hidden></p>
-    <div id="drawerBody" class="drawer-body"></div>
-    <div class="drawer-footer">
-      <button class="btn ghost danger-link" id="deleteRound">Remove game</button>
-      <button class="btn primary" id="doneRound">Save Game</button>
-    </div>
-  </aside>
-
   <div class="modal-backdrop" id="modalBackdrop"></div>
-  <div class="modal" id="roundModal" role="dialog" aria-modal="true" aria-label="Add Game">
-    <div class="modal-head"><div><p class="eyebrow">ADD GAME</p><h2>Choose a game</h2></div><button class="icon-btn" id="closeModal" aria-label="Close game picker">×</button></div>
+  <div class="modal gn-library-modal" id="roundModal" role="dialog" aria-modal="true" aria-labelledby="libraryTitle">
+    <div class="modal-head"><div><p class="eyebrow" id="libraryEyebrow">GAME LIBRARY</p><h2 id="libraryTitle">Choose a game</h2></div><button class="icon-btn" id="closeModal" aria-label="Close game library">×</button></div>
     <div class="game-picker" id="gamePicker"></div>
   </div>
 

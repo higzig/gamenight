@@ -1,5 +1,6 @@
 import { classifyEvents, formatEventDate, humanEventStatus, localCalendarDate } from './event-chooser.js'
 import { isSnapshotChange, realtimeRecovery, shouldPollEvent, snapshotFingerprint, stateVersion } from './state-sync.js'
+import { RECOMMENDED_LINEUP, toGameTypes } from './host/game-catalog.js'
 
 export function createAdminApplication({
   client,
@@ -101,6 +102,8 @@ export function createAdminApplication({
         name,
         venue: doc.getElementById('newEventVenue').value.trim(),
         eventDate,
+        // Only newly created nights get the recommended games.
+        lineup: toGameTypes(RECOMMENDED_LINEUP),
       })
       await openEvent(id)
     } catch (error) {
@@ -151,8 +154,13 @@ export function createAdminApplication({
       selectGame: roundId => services.selectHostedGame(client,eventId,roundId).then(refreshActiveEvent),
       resumeGame: roundId => services.resumeHostedGame(client,eventId,roundId).then(refreshActiveEvent),
       activateRound: roundId => services.activateHostedRound(client,eventId,roundId).then(refreshActiveEvent),
+      setLineup: (gameTypes, expectedRevision) => services.setEventLineup(client,eventId,gameTypes,expectedRevision).then(refreshActiveEvent),
+      startGameNight: () => services.startGameNight(client,eventId).then(refreshActiveEvent),
       startNewSession: async () => {
+        const lineup = (win.gameNightRemoteSession?.lineup?.games || []).map(game => game.game_type)
         const newId = await services.copyEventSession(client, eventId)
+        // The new room keeps tonight's running order (lineup only; no gameplay is copied).
+        if (lineup.length) await services.setEventLineup(client, newId, lineup, null).catch(console.error)
         await openEvent(newId)
         return newId
       },

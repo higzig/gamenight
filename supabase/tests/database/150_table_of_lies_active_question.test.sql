@@ -1,4 +1,4 @@
-begin;create extension if not exists pgtap with schema extensions;select plan(14);
+begin;create extension if not exists pgtap with schema extensions;select plan(15);
 -- Deferred FKs are otherwise only checked at commit, which these rolled-back tests never reach.
 set constraints all immediate;
 insert into auth.users(instance_id,id,aud,role,email,encrypted_password,email_confirmed_at,raw_app_meta_data,raw_user_meta_data,created_at,updated_at)values
@@ -34,7 +34,10 @@ select is((select active_question_id from public.perfect_lie_round_states where 
 select is((select active_question_id from public.events where id='a5000000-0000-0000-0000-000000000001'),null::uuid,'events.active_question_id holds only Guess the Age questions');
 
 set local role authenticated;select set_config('request.jwt.claims','{"sub":"15000000-0000-0000-0000-000000000001","role":"authenticated","is_anonymous":false}',true);
-select lives_ok($$select public.save_guess_age_round('a5000000-0000-0000-0000-000000000001','Guess the Age','[{"celebrity_name":"Pedro Pascal","date_of_birth":"1975-04-02"}]')$$,'Switching to another game pauses Table of Lies');
+select set_config('test.ga',public.save_guess_age_round('a5000000-0000-0000-0000-000000000001','Guess the Age','[{"celebrity_name":"Pedro Pascal","date_of_birth":"1975-04-02"}]')::text,true);
+select lives_ok($$select public.select_hosted_game('a5000000-0000-0000-0000-000000000001',current_setting('test.ga')::uuid)$$,'Switching to another game pauses Table of Lies');
+reset role;select is((select c.state from private.game_checkpoints c where c.round_id=current_setting('test.round')::uuid),'paused','Table of Lies has a paused checkpoint');
+set local role authenticated;select set_config('request.jwt.claims','{"sub":"15000000-0000-0000-0000-000000000001","role":"authenticated","is_anonymous":false}',true);
 select lives_ok($$select public.select_hosted_game('a5000000-0000-0000-0000-000000000001',current_setting('test.round')::uuid)$$,'Host reselects the paused Table of Lies');
 select lives_ok($$select public.resume_hosted_game('a5000000-0000-0000-0000-000000000001',current_setting('test.round')::uuid)$$,'Host resumes Table of Lies');
 reset role;

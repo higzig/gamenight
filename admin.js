@@ -1,4 +1,9 @@
-import {iBetCategoryDefaults,guessAgeDefaults,categorySelectionError,GAME_TYPES,PLAN_PREFIX,serverGame,gameProgress,nightGames,reconcilePlan,startPlannedGame} from './src/admin-night.js';
+import {iBetCategoryDefaults,categorySelectionError,GAME_TYPES,PLAN_PREFIX,nightGames,startPlannedGame} from './src/admin-night.js';
+import { GAME_CATALOG,STARTER_CELEBRITIES,toGameTypes } from './src/host/game-catalog.js';
+import { addGame,adoptedLineup,lineupSaved,moveGame,nightStartCheck,removeGame,replaceGame,serverLineupTypes } from './src/host/lineup.js';
+import { bindDashboard,configHeaderMarkup,dashboardMarkup,libraryMarkup } from './src/host/dashboard.js';
+import { createActionRunner,friendlyHostError } from './src/host/action-runner.js';
+import { formatEventDate } from './src/event-chooser.js';
 import { NO_CONTEXT_TEST_PROMPTS } from './src/no-context-content.js';
 import { noContextStage,noContextCloseWarning,noContextSeconds,updateNoContextClock } from './src/no-context.js';
 import { moveItem, runConfirmed } from './src/admin-controls.js';
@@ -12,21 +17,10 @@ const LEGACY_KEY = 'gameNightAdminV2';
 const CHANNEL_NAME = 'gameNightLiveV3';
 const channel = 'BroadcastChannel' in window ? new BroadcastChannel(CHANNEL_NAME) : null;
 
-const games = {
-  guessAge: {name:'Guess the Age', icon:'🎂', desc:'15-second celebrity age guesses', ready:true},
-  iBetYou: {name:'I Bet You', icon:'🎤', desc:'Hosted live bidding and stage challenge', ready:true},
-  perfectLie:{name:TABLE_OF_LIES_NAME,icon:'🃏',desc:'One answer is true. The rest were made up at the table.',ready:true},
-  noContext:{name:'No Context',icon:'💬',desc:'Five visual prompts. Anonymous responses and team voting.',ready:true},
-  future: {name:'Future Game', icon:'✦', desc:'Placeholder for a new round', ready:false}
-};
+const games = Object.fromEntries(Object.values(GAME_CATALOG).map(g=>[g.type,{name:g.name,icon:g.icon,desc:g.description,ready:true}]));
+games.future={name:'Future Game',icon:'✦',desc:'Placeholder for a new round',ready:false};
 
-const seedCelebs = [
-  {name:'Pedro Pascal',dob:'1975-04-02',image:''}, {name:'Zendaya',dob:'1996-09-01',image:''},
-  {name:'Robert Downey Jr.',dob:'1965-04-04',image:''}, {name:'Cristiano Ronaldo',dob:'1985-02-05',image:''},
-  {name:'Tom Holland',dob:'1996-06-01',image:''}, {name:'Scarlett Johansson',dob:'1984-11-22',image:''},
-  {name:'Ryan Reynolds',dob:'1976-10-23',image:''}, {name:'Lionel Messi',dob:'1987-06-24',image:''},
-  {name:'Florence Pugh',dob:'1996-01-03',image:''}, {name:'Samuel L. Jackson',dob:'1948-12-21',image:''}
-];
+const seedCelebs = STARTER_CELEBRITIES;
 
 function defaultState(){return {
   version:3,
@@ -65,53 +59,86 @@ function load(){
   return defaultState();
 }
 let noContextPending=false;
-let nightPlan={games:[],excluded:[],progress:{}},nightEventId=null,nightScreen='auto',nightPending=false,editorDraft=null,editorOriginalType=null,editorSaving=false;
-function persistNight(){if(nightEventId)localStorage.setItem(PLAN_PREFIX+nightEventId,JSON.stringify(nightPlan))}
+// Browser-only Host preferences. The running order and game progress come from the server.
+let nightPrefs={},nightEventId=null,nightScreen='auto',editorReturn='auto',nightPending=false,editorDraft=null,editorOriginal='',editorSaving=false,libraryMode=null,lastStatuses=new Map();
+const adoptedEvents=new Set();
+const runner=createActionRunner({showError:showHostError,clearError:clearHostError,onBusyChange:()=>renderNight()});
+function showHostError(message){$('#hostAlertText').textContent=message;$('#hostAlert').hidden=false}
+function clearHostError(){$('#hostAlert').hidden=true}
+function storedPlan(eventId){try{return JSON.parse(localStorage.getItem(PLAN_PREFIX+eventId))}catch{return null}}
+// Only display preferences are written; an older stored running order is left untouched.
+function persistNight(){if(nightEventId)localStorage.setItem(PLAN_PREFIX+nightEventId,JSON.stringify({...(storedPlan(nightEventId)||{}),finished:Boolean(nightPrefs.finished),audienceManual:Boolean(nightPrefs.audienceManual)}))}
 function loadNight(){
   const snapshot=remoteSession();if(!snapshot)return;
   if(nightEventId!==snapshot.event.id){
-    nightEventId=snapshot.event.id;nightScreen='auto';editorDraft=null;editingRoundId=null;perfectLieBrowseQuestionId='';perfectLieObservedQuestionId=null;
-    $('#roundDrawer').classList.remove('open');$('#drawerBackdrop').classList.remove('open');
-    try{nightPlan=JSON.parse(localStorage.getItem(PLAN_PREFIX+nightEventId))||{games:[],excluded:[],progress:{}}}catch{nightPlan={games:[],excluded:[],progress:{}}}
-    // Adopt legacy drafts only for the matching event; never seed a new event with demo slots.
-    if(!nightPlan.games.length&&state.event?.roomCode===snapshot.event.room_code)nightPlan.games=state.rounds.filter(r=>GAME_TYPES[r.type]);
+    nightEventId=snapshot.event.id;nightScreen='auto';editorDraft=null;editingRoundId=null;perfectLieBrowseQuestionId='';perfectLieObservedQuestionId=null;lastStatuses=new Map();closeModal();
+    const stored=storedPlan(nightEventId)||{};nightPrefs={finished:Boolean(stored.finished),audienceManual:Boolean(stored.audienceManual)};
   }
-  nightPlan=reconcilePlan(snapshot,nightPlan,Object.fromEntries(Object.entries(games).map(([k,v])=>[k,v.name])));
-  state.rounds=nightPlan.games;
-  for(const r of state.rounds)if(r.type==='guessAge')for(const c of r.settings.celebrities||[])if(c.imageKind==='storage'&&c.imagePath)c.image=`${storageBase()}/${c.imagePath}`;
-  persistNight();
+  // A night created before the running order moved to the server adopts its earlier order once.
+  if(snapshot.lineup&&!lineupSaved(snapshot)&&!adoptedEvents.has(nightEventId)){
+    adoptedEvents.add(nightEventId);const types=adoptedLineup(snapshot,storedPlan(nightEventId));
+    runner.run('lineup',()=>window.gameNightSupabaseActions.setLineup(toGameTypes(types),null),{failure:'Could not load tonight’s running order. Refresh the page to try again.'});
+  }
+  state.rounds=plannedGames();
 }
-function plannedGames(){return nightGames(remoteSession()||{},nightPlan)}
+function plannedGames(){return remoteSession()?nightGames(remoteSession()):[]}
 function nightView(){document.querySelector('[data-view="night"]')?.click()}
 function gameForId(id){return plannedGames().find(g=>g.id===id||g.remote?.id===id||`control-${GAME_TYPES[g.type]}`===id)}
 function primaryNightGame(){return plannedGames().find(g=>g.status==='live'&&g.remote?.id===remoteSession()?.event.active_round_id)||null}
 function renderNight(){
   if(!remoteSession())return;
-  const list=plannedGames(),live=primaryNightGame(),next=list.find(g=>g.status==='upcoming'),finished=nightPlan.finished&& !live;
+  const list=plannedGames(),live=primaryNightGame(),next=list.find(g=>g.status==='upcoming'),finished=nightPrefs.finished&& !live;
   const selectedPaused=list.find(g=>g.status==='paused'&&g.remote?.id===remoteSession().event.active_round_id);
   const history=nightScreen.startsWith('history:')?list.find(g=>g.id===nightScreen.slice(8)&&g.status==='complete'):null;
-  const stage=Boolean(history||(live||selectedPaused)&&nightScreen!=='order');if(!stage)clearInterval(liveTicker);
-  $('#nightOverview').hidden=stage;$('#nightStage').hidden=!stage;
-  $('#addRound').disabled=nightPending;
+  const configuring=nightScreen.startsWith('configure:')&&Boolean(editorDraft);
+  const stage=!configuring&&Boolean(history||(live||selectedPaused)&&nightScreen!=='order');if(!stage)clearInterval(liveTicker);
+  $('#nightOverview').hidden=stage||configuring;$('#nightConfigure').hidden=!configuring;$('#nightStage').hidden=!stage;
   if(history){renderGameHistory(history)}else if(stage&&selectedPaused){renderPausedGame(selectedPaused)}else if(stage){const id=live.remote?.id;if(id)localStorage.setItem(CONTROL_ROUND_PREFIX+nightEventId,id);$('#nightStage').dataset.game=live.type;renderLiveControl()}
-  const heading=finished?'What a night.':live?`${games[live.type].name} is live`:next?`${games[next.type].name} is ${next.error?'nearly ready':'up next'}`:'Your stage is waiting';
-  const detail=finished?'The final standings are on the Audience screen.':live?'Your game keeps running while you check the line-up.':next?next.error||roundSummary(next):'Add your first game to get the night started.';
-  $('#nightRecommendation').innerHTML=`<section class="night-spotlight" data-game="${live?.type||next?.type||'brand'}"><div><p class="eyebrow">${finished?'NIGHT FINISHED':live?'ON STAGE':next?'UP NEXT':'LET’S GET STARTED'}</p><h2>${esc(heading)}</h2><p>${esc(detail)}</p></div>${live?'<button class="btn primary" id="resumeNight">Return to game →</button>':next?`<button class="btn primary" id="startNextGame" ${nightPending?'disabled':''}>${nightPending?'Starting…':next.error?'Set up game':`${list.some(g=>g.status==='complete')?'Next Game:':'Start'} ${esc(games[next.type].name)}`} →</button>`:list.length&&!finished?'<button class="btn primary" id="finishNight">Finish Night →</button>':finished?'<button class="btn secondary" id="finalStandings">View leaderboard →</button>':'<button class="btn primary" id="firstGame">+ Add Game</button>'}</section>`;
-  if($('#resumeNight'))$('#resumeNight').onclick=()=>{nightScreen='auto';renderNight()};
-  if($('#startNextGame'))$('#startNextGame').onclick=()=>next.error?openDrawer(next.id):startNightGame(next.id);
-  if($('#firstGame'))$('#firstGame').onclick=openModal;
-  if($('#finalStandings'))$('#finalStandings').onclick=()=>document.querySelector('[data-view="leaderboard"]').click();
-  if($('#finishNight'))$('#finishNight').onclick=async()=>{try{await window.gameNightSupabaseActions.setDisplay('leaderboard');nightPlan.finished=true;persistNight();renderNight()}catch{toast('Could not show the final standings. Please try again.')}};
-  renderRounds();renderAudienceOverride();
+  if(!stage&&!configuring)renderDashboard(list,live,selectedPaused,next,finished);
+  renderAudienceOverride();
+}
+function renderDashboard(list,live,pausedGame,next,finished){
+  const s=remoteSession(),root=$('#nightOverview'),started=Boolean(s.lineup?.started_at)||list.some(g=>g.status!=='upcoming');
+  root.innerHTML=dashboardMarkup({event:{name:s.event.name,venue:s.event.venue,date:s.event.event_date?formatEventDate(s.event.event_date):'',roomCode:s.event.room_code},teamCount:remoteTeams().filter(t=>t.status==='active').length,games:list,started,busy:runner.isBusy()||nightPending,live,pausedGame,next,finished,startCheck:nightStartCheck(list)});
+  bindDashboard(root,{action:dashboardAction,move:(type,to)=>changeLineup(types=>moveGame(types,type,to),`${games[type].name} moved to position ${to+1}.`)},plannedGames);
+}
+async function copyJoinLink(){const code=remoteSession()?.event?.room_code;if(!code)return;const url=new URL('team.html',location.href);url.searchParams.set('room',code);try{await navigator.clipboard.writeText(url.href);toast('Team join link copied')}catch{toast(`Room code: ${code}`)}}
+function dashboardAction(action,type){
+  const index=plannedGames().findIndex(g=>g.type===type),name=games[type]?.name;
+  if(action==='add')return openLibrary('add');
+  if(action==='replace')return openLibrary('replace',type);
+  if(action==='remove'){if(confirm(`Remove ${name} from tonight’s line-up? Its saved settings are kept if you add it again.`))changeLineup(types=>removeGame(types,type),`${name} removed from tonight’s line-up.`);return}
+  if(action==='move-up'||action==='move-down')return changeLineup(types=>moveGame(types,type,index+(action==='move-up'?-1:1)),`${name} moved to position ${index+(action==='move-up'?0:2)}.`);
+  if(action==='edit')return openEditor(type);
+  if(action==='start-game')return startNightGame(type);
+  if(action==='open-live'){nightScreen='auto';return renderNight()}
+  if(action==='history'){nightScreen='history:'+type;return renderNight()}
+  if(action==='start-night')return runner.run('start-night',()=>window.gameNightSupabaseActions.startGameNight(),{failure:'Could not start the night. Please try again.'});
+  if(action==='finish-night')return runner.run('finish-night',async()=>{await window.gameNightSupabaseActions.setDisplay('leaderboard');nightPrefs.finished=true;persistNight();renderNight()},{failure:'Could not show the final standings. Please try again.'});
+  if(action==='leaderboard'||action==='teams')return document.querySelector(`[data-view="${action}"]`)?.click();
+  if(action==='copy-link')return copyJoinLink();
+}
+// Every running-order change goes to the server with the revision this screen last saw.
+async function changeLineup(transform,announcement){
+  const s=remoteSession(),current=serverLineupTypes(s),next=transform(current);
+  if(next.join()===current.join())return;
+  const focused=document.activeElement?.closest?.('#nightOverview [data-action]'),focusKey=focused?[focused.dataset.action,focused.dataset.type]:null;
+  const result=await runner.run('lineup',()=>window.gameNightSupabaseActions.setLineup(toGameTypes(next),s.lineup?.revision??null),{failure:'Could not update tonight’s games. Please try again.'});
+  if(!result.ok&&result.error?.code==='40001')await window.gameNightSupabaseActions.refresh().catch(console.error);
+  renderNight();
+  if(!result.ok)return;
+  const announce=$('#dashAnnounce');if(announce)announce.textContent=announcement;
+  if(focusKey)(document.querySelector(`#nightOverview [data-action="${focusKey[0]}"][data-type="${focusKey[1]}"]:not(:disabled)`)||document.querySelector(`#nightOverview .gn-card[data-type="${focusKey[1]}"] .gn-card-primary`))?.focus();
 }
 async function startNightGame(id){
   const game=gameForId(id);if(!game||nightPending||!['upcoming','paused'].includes(game.status))return;
-  if(game.status!=='paused'&&game.error)return openDrawer(game.id);
-  nightPending=true;renderNight();
+  if(game.status!=='paused'&&game.configIssue)return openEditor(game.type);
+  if(game.status!=='paused'&&game.error)return showHostError(game.error);
+  nightPending=true;clearHostError();renderNight();
   try{
     await startPlannedGame(game,{snapshot:remoteSession,actions:window.gameNightSupabaseActions,prompts:NO_CONTEXT_TEST_PROMPTS});
-    nightPlan.progress[game.type]=game.status==='paused'?'paused':'live';const started=nightPlan.games.find(g=>g.type===game.type);if(started)delete started.awaitingStart;nightPlan.finished=false;nightScreen='auto';persistNight();nightView();
-  }catch(error){console.error(error);toast(error.message||'Could not start this game. Please try again.')}finally{nightPending=false;loadNight();renderNight()}
+    nightPrefs.finished=false;nightScreen='auto';persistNight();nightView();
+  }catch(error){console.error(error);showHostError(friendlyHostError(error,'Could not start this game. Please try again.'))}finally{nightPending=false;loadNight();renderNight()}
 }
 function renderPausedGame(game){
   clearInterval(liveTicker);$('#nightStage').dataset.game=game.type;
@@ -126,14 +153,14 @@ function renderGameHistory(game){
   if($('#replayCompleted'))$('#replayCompleted').onclick=async()=>{
     if(primaryNightGame())return toast('Finish the current game before restarting this one.');
     if(!confirm(`Restart ${games[game.type].name}? Its answers and game points will be removed. Teams and other game scores stay.`))return;
-    try{if(game.type==='guessAge')await window.gameNightSupabaseActions.restartRound();else await window.gameNightSupabaseActions.controlNoContext(remoteSession().no_context.play.id,'restart');nightPlan.progress[game.type]='live';nightPlan.finished=false;nightScreen='auto';persistNight();renderNight()}catch{toast('Could not restart the game. Please try again.')}
+    try{if(game.type==='guessAge')await window.gameNightSupabaseActions.restartRound();else await window.gameNightSupabaseActions.controlNoContext(remoteSession().no_context.play.id,'restart');nightPrefs.finished=false;nightScreen='auto';persistNight();renderNight()}catch{toast('Could not restart the game. Please try again.')}
   };
   $('#newNightFromHistory').onclick=()=>runConfirmed(confirm,'Create a new room? This night stays in history. Only the Guess the Age lineup is copied.',()=>window.gameNightSupabaseActions.startNewSession());
 }
 function renderAudienceOverride(){
   const root=$('#audienceOverride');if(!root||!remoteSession())return;
-  root.innerHTML=`<p class="eyebrow">AUDIENCE SCREEN</p><p class="hint">Start a game to put it on screen. Choose a view below to override it.</p><label class="audience-auto"><input id="autoAudience" type="checkbox" ${nightPlan.audienceManual?'':'checked'}> Automatic between games</label>${audienceSelector(remoteSession().event)}`;
-  $('#autoAudience').onchange=e=>{nightPlan.audienceManual=!e.target.checked;persistNight()};bindAudienceSelector();
+  root.innerHTML=`<p class="eyebrow">AUDIENCE SCREEN</p><p class="hint">Start a game to put it on screen. Choose a view below to override it.</p><label class="audience-auto"><input id="autoAudience" type="checkbox" ${nightPrefs.audienceManual?'':'checked'}> Automatic between games</label>${audienceSelector(remoteSession().event)}`;
+  $('#autoAudience').onchange=e=>{nightPrefs.audienceManual=!e.target.checked;persistNight()};bindAudienceSelector();
 }
 
 let state=load(); let editingRoundId=null; let liveTicker=null; const iBetYouDrafts=new Map();
@@ -159,70 +186,60 @@ function remoteQuestion(){const s=remoteSession();return remoteGuessRound()?.que
 function remoteTimeLeft(){const s=remoteSession();if(!s?.event?.question_deadline_at)return 0;const serverAtHydration=new Date(s.server_now).getTime(),deadline=new Date(s.event.question_deadline_at).getTime(),elapsed=Date.now()-(s._hydratedAt||Date.now());return Math.max(0,Math.ceil((deadline-serverAtHydration-elapsed)/1000))}
 function controlRounds(){return mergeHostRoundOptions(remoteSession()||{},state.rounds)}
 function selectedControlRound(){const s=remoteSession(),rounds=controlRounds(),saved=s?.event?.id?localStorage.getItem(CONTROL_ROUND_PREFIX+s.event.id):null,id=selectSensibleControlRound(rounds,saved,s?.event?.active_round_id);return rounds.find(r=>r.id===id)||null}
-function selectControlRound(id){const game=gameForId(id);if(!game)return;if(game.status==='upcoming')return openDrawer(game.id);if(game.status==='complete'){nightScreen='order';nightView();return}nightScreen='auto';nightView()}
+function selectControlRound(id){const game=gameForId(id);if(!game)return;if(game.status==='upcoming')return openEditor(game.type);if(game.status==='complete'){nightScreen='order';nightView();return}nightScreen='auto';nightView()}
 function roundNavigator(){const list=plannedGames(),live=primaryNightGame(),selected=live||gameForId(selectedControlRound()?.id),next=list.find(g=>g.status==='upcoming');return `<header class="stage-heading"><div><p class="eyebrow">${selected?.status==='complete'?'COMPLETE':'ON STAGE'} · GAME ${Math.max(1,list.findIndex(g=>g.id===selected?.id)+1)} OF ${list.length}</p><h2>${esc(games[selected?.type]?.name||'Game Night')}</h2><p>${next?`Up next: ${esc(games[next.type].name)}`:'The final game of the night'}</p></div><button class="btn secondary" data-night-order>Tonight’s Games ↗</button></header><div class="stage-progress" aria-label="Tonight’s Games">${list.map(g=>`<span class="${g.status}" data-control-round="${g.remote?.id||g.id}">${g.status==='complete'?'✓':g.status==='live'?'●':'○'} ${esc(games[g.type].name)}</span>`).join('')}</div>`}
 function bindRoundNavigator(){document.querySelectorAll('[data-night-order]').forEach(b=>b.onclick=()=>{nightScreen='order';renderNight()})}
 function audienceSelector(event){return `<div class="audience-control"><div>${audienceDisplayOptions(event.display_mode).map(mode=>`<button class="segment ${mode.selected?'selected':''}" data-display="${mode.value}" aria-pressed="${mode.selected}">${mode.label}</button>`).join('')}</div></div>`}
-function bindAudienceSelector(){document.querySelectorAll('[data-display]').forEach(button=>button.onclick=async()=>{try{await window.gameNightSupabaseActions.setDisplay(button.dataset.display);nightPlan.audienceManual=true;persistNight();renderAudienceOverride()}catch{toast('Could not change the Audience screen.')}})}
+function bindAudienceSelector(){document.querySelectorAll('[data-display]').forEach(button=>button.onclick=async()=>{try{await window.gameNightSupabaseActions.setDisplay(button.dataset.display);nightPrefs.audienceManual=true;persistNight();renderAudienceOverride()}catch{toast('Could not change the Audience screen.')}})}
 
 function bindEventFields(){
   const remote=remoteSession()?.event;
   if(remote){
     state.event={...state.event,name:remote.name,venue:remote.venue,date:remote.event_date,roomCode:remote.room_code};
-    $('#eventName').value=remote.name;$('#venueName').value=remote.venue;$('#eventDate').value=remote.event_date;$('#eventTitle').textContent=remote.name;$('#roomCode').textContent=remote.room_code;
-    ['eventName','venueName','eventDate'].forEach(id=>{$('#'+id).disabled=true;$('#'+id).title='Set when this night was created'});
-    $('#connectedCount').textContent=`${remoteTeams().length} teams registered`;$('#eventStatusLine').textContent=`${remote.room_code} · ${remoteTeams().length} Teams · ${remote.status}`;
+    $('#eventTitle').textContent=remote.name;$('#eventStatusLine').textContent=`Room ${remote.room_code} · ${remoteTeams().filter(t=>t.status==='active').length} teams`;
     return;
   }
-  $('#eventName').value=state.event.name;$('#venueName').value=state.event.venue;$('#eventDate').value=state.event.date;$('#eventTitle').textContent=state.event.name;$('#roomCode').textContent=state.event.roomCode;$('#connectedCount').textContent=`${state.teams.length} local test teams`;
+  // Local prototype only.
+  if(!$('#eventName'))return;
+  $('#eventName').value=state.event.name;$('#venueName').value=state.event.venue;$('#eventDate').value=state.event.date;$('#eventTitle').textContent=state.event.name;
   [['eventName','name'],['venueName','venue'],['eventDate','date']].forEach(([id,key])=>$('#'+id).oninput=e=>{state.event[key]=e.target.value;$('#eventTitle').textContent=state.event.name||'Untitled Game Night';save(false)});
 }
-function roundSummary(r){
-  if(r.type==='guessAge') return `${r.settings.celebrities?.length||0} celebrities · ${r.settings.timer||15}s answers`;
-  if(r.type==='iBetYou'){const count=remoteSession()?.i_bet_you?.groups?.length;return `${count?`${count} group${count===1?'':'s'}`:'Teams grouped at the start'} · a category for each group · ${r.settings.winPoints||5} points to winner`;}
-  if(r.type==='noContext')return '5 prompts · 45s responses · 30s votes · 5/3/1 points';
-  if(r.type==='perfectLie'){const n=r.settings.categories?.length||0,q=(r.settings.categories||[]).reduce((sum,c)=>sum+(c.questions?.length||0),0);return `${n} ${n===1?'category':'categories'} · ${q} ${q===1?'question':'questions'}`;}
-  return 'Game not chosen yet';
+// One configuration view for every game: the game's own editor, then Cancel / Save Game.
+function openEditor(type){
+  const game=gameForId(type);if(!game)return;
+  if(!game.editable)return showHostError(`${games[game.type].name} has already been on stage, so its settings are locked.`);
+  editingRoundId=game.type;editorReturn=nightScreen.startsWith('configure:')?editorReturn:nightScreen;
+  editorDraft={id:game.type,type:game.type,title:game.title,settings:structuredClone(game.settings)};
+  if(game.type==='perfectLie'&&!editorDraft.settings.categories.length)editorDraft.settings.categories=createPerfectLieDraft().categories;
+  if(game.type==='guessAge')for(const c of editorDraft.settings.celebrities||[])if(c.imageKind==='storage'&&c.imagePath)c.image=`${storageBase()}/${c.imagePath}`;
+  editorOriginal=JSON.stringify(editorDraft);nightScreen='configure:'+game.type;
+  const info=game.type==='noContext';
+  $('#nightConfigure').dataset.game=game.type;$('#configIdentity').innerHTML=configHeaderMarkup(game);$('#gameSettingsError').hidden=true;
+  $('#doneRound').textContent=info?'Done':'Save Game';$('#doneRound').disabled=false;$('#cancelConfig').hidden=info;
+  $('#configNote').textContent=info?'No Context uses five sample picture prompts. Custom prompts will come later.':'Changes apply when you press Save Game. Saving never starts or switches a game.';
+  renderDrawer(editorDraft);renderNight();window.scrollTo?.(0,0);$('#configBack').focus();
 }
-function renderRounds(){
-  const list=plannedGames(),live=primaryNightGame(),next=list.find(g=>g.status==='upcoming');
-  $('#roundsList').innerHTML=list.map((r,i)=>{const g=games[r.type],status=r.status==='live'?'LIVE':r.status==='complete'?'COMPLETE':r.status==='paused'?'PAUSED':r.error?'NEEDS SETUP':r.id===next?.id?'UP NEXT':'READY';return `<article class="round-card night-game ${r.status}" data-game="${r.type}" data-id="${r.id}"><div class="round-num">${r.status==='complete'?'✓':String(i+1).padStart(2,'0')}</div><div class="game-icon">${g.icon}</div><div class="round-main"><span class="game-status ${r.status} ${r.error?'needs-setup':''}">${status}</span><h3>${esc(r.type==='perfectLie'?perfectLieDisplayTitle(r.title):r.title||g.name)}</h3><p>${esc(roundSummary(r))}</p></div><div class="round-actions">${r.editable?`<button class="mini-btn start-game" ${nightPending?'disabled':''}>Start</button><button class="mini-btn edit-round">Edit</button><button class="mini-btn move-up" aria-label="Move ${esc(g.name)} up" ${i===0||!list[i-1]?.editable||nightPending?'disabled':''}>↑</button><button class="mini-btn move-down" aria-label="Move ${esc(g.name)} down" ${i===list.length-1||!list[i+1]?.editable||nightPending?'disabled':''}>↓</button>`:r.status==='paused'?'<button class="btn secondary select-paused">Resume →</button>':r.status==='live'?'<button class="btn secondary resume-game">Return to game →</button>':'<button class="mini-btn game-history">Results &amp; more</button>'}</div></article>`}).join('')||'<div class="night-empty"><span>✦</span><h3>A blank canvas for a brilliant night.</h3><p>Choose a game above to begin your line-up.</p></div>';
-  document.querySelectorAll('.start-game,.select-paused').forEach(b=>b.onclick=()=>startNightGame(b.closest('.round-card').dataset.id));
-  document.querySelectorAll('.edit-round').forEach(b=>b.onclick=()=>openDrawer(b.closest('.round-card').dataset.id));
-  document.querySelectorAll('.move-up,.move-down').forEach(b=>b.onclick=()=>moveRound(b.closest('.round-card').dataset.id,b.classList.contains('move-up')?-1:1));
-  document.querySelectorAll('.game-history').forEach(b=>b.onclick=()=>{nightScreen='history:'+b.closest('.round-card').dataset.id;renderNight()});
-  document.querySelectorAll('.resume-game').forEach(b=>b.onclick=()=>{nightScreen='auto';renderNight()});
+function closeEditor({force=false}={}){
+  if(editorSaving||!editorDraft)return;
+  if(!force&&JSON.stringify(editorDraft)!==editorOriginal&&!confirm('Discard your unsaved changes to this game?'))return;
+  const type=editingRoundId;editingRoundId=null;editorDraft=null;nightScreen=editorReturn||'auto';renderNight();
+  document.querySelector(`#nightOverview .gn-card[data-type="${type}"] .gn-card-primary`)?.focus();
 }
-function moveRound(id,delta){const list=plannedGames(),i=list.findIndex(r=>r.id===id),j=i+delta;if(nightPending||!list[i]?.editable||!list[j]?.editable)return;[nightPlan.games[i],nightPlan.games[j]]=[nightPlan.games[j],nightPlan.games[i]];state.rounds=nightPlan.games;persistNight();renderNight()}
-function openDrawer(id){
-  const r=gameForId(id);if(!r?.editable||nightPending)return;
-  editingRoundId=id;editorOriginalType=r.type;editorDraft=structuredClone(nightPlan.games.find(g=>g.id===id));
-  $('#gameSettingsError').hidden=true;renderGameSettings();$('#roundDrawer').classList.add('open');$('#drawerBackdrop').classList.add('open');$('#closeDrawer').focus();
-}
-function renderGameSettings(){
-  const r=editorDraft;if(!r)return;$('#drawerTitle').textContent=games[r.type].name;
-  $('#gameTypeControl').innerHTML=`<label class="field">Game<select id="settingsGameType">${Object.entries(games).filter(([type,g])=>g.ready).map(([type,g])=>`<option value="${type}" ${r.type===type?'selected':''} ${nightPlan.games.some(x=>x.id!==r.id&&x.type===type)?'disabled':''}>${g.name}</option>`).join('')}</select></label>`;
-  $('#settingsGameType').onchange=e=>{const type=e.target.value;if(nightPlan.games.some(x=>x.id!==r.id&&x.type===type))return;r.type=type;r.title=games[type].name;r.settings=newGame(type).settings;renderGameSettings()};
-  renderDrawer(r);
-}
-function closeDrawer(){if(editorSaving)return;editingRoundId=null;editorDraft=null;$('#roundDrawer').classList.remove('open');$('#drawerBackdrop').classList.remove('open');renderNight();$('#addRound').focus()}
 async function saveGameSettings(){
   if(!editorDraft||editorSaving)return;
-  const r=editorDraft,original=gameForId(editingRoundId);const originalIndex=nightPlan.games.findIndex(g=>g.id===editingRoundId);if(!original?.editable)return toast('This game has started. Its settings are now locked.');
+  const r=editorDraft,original=gameForId(editingRoundId);
+  const fail=message=>{$('#gameSettingsError').textContent=message;$('#gameSettingsError').hidden=false};
+  if(r.type==='noContext')return closeEditor({force:true});
+  if(!original?.editable)return fail('This game has started. Its settings are now locked.');
   const error=r.type==='guessAge'?lineupValidationError(r.settings.celebrities)?.replaceAll('syncing','saving'):r.type==='perfectLie'?perfectLieValidationError(r.settings.categories):r.type==='iBetYou'?categorySelectionError(r.settings.categories):null;
-  const fail=message=>{$('#gameSettingsError').textContent=message;$('#gameSettingsError').hidden=false};if(error)return fail(error);
-  // The existing Guess the Age save RPC selects that game. Never run it over live play.
-  if(r.type==='guessAge'&&primaryNightGame())return fail('Finish the current game before saving this lineup. Your draft is kept open.');
-  if(r.type==='guessAge'){r.awaitingStart=true;nightPlan.games.find(g=>g.id===editingRoundId).awaitingStart=true}editorSaving=true;$('#doneRound').disabled=true;$('#doneRound').textContent='Saving…';
+  if(error)return fail(error);
+  editorSaving=true;$('#doneRound').disabled=true;$('#doneRound').textContent='Saving…';$('#gameSettingsError').hidden=true;
   try{
     if(r.type==='guessAge')await window.gameNightSupabaseActions.saveGuessAgeRound(r.title,r.settings.celebrities);
-    if(r.type==='iBetYou'){await window.gameNightSupabaseActions.saveIBetYouSettings(r.settings.categories);r.settings.categories=iBetCategoryDefaults(remoteSession())}
+    if(r.type==='iBetYou')await window.gameNightSupabaseActions.saveIBetYouSettings(r.settings.categories);
     if(r.type==='perfectLie')await window.gameNightSupabaseActions.savePerfectLie(r.title,perfectLiePayload(r.settings.categories));
-    if(editorOriginalType!==r.type){nightPlan.excluded=[...new Set([...nightPlan.excluded,editorOriginalType])];delete nightPlan.progress[editorOriginalType]}
-    nightPlan.excluded=nightPlan.excluded.filter(t=>t!==r.type);
-    nightPlan.games=nightPlan.games.filter(g=>g.id!==r.id&&g.type!==r.type);
-    nightPlan.games.splice(Math.max(0,originalIndex),0,structuredClone(r));state.rounds=nightPlan.games;persistNight();toast('Game saved');editorSaving=false;closeDrawer();
-  }catch(error){console.error(error);fail(error.message||'Could not save this game. Your settings are still here.')}finally{editorSaving=false;$('#doneRound').disabled=false;$('#doneRound').textContent='Save Game'}
+    editorSaving=false;toast('Game saved');closeEditor({force:true});
+  }catch(err){console.error(err);fail(friendlyHostError(err,'Could not save this game. Your changes are still here.'))}finally{editorSaving=false;$('#doneRound').disabled=false;$('#doneRound').textContent='Save Game'}
 }
 function renderDrawer(r){
   if(r.type==='guessAge') return renderGuessAgeEditor(r);
@@ -325,7 +342,7 @@ function renderIBetEditor(r){
 
 function renderTeams(){
   const joined=remoteTeams();
-  $('#connectedCount').textContent=remoteSession()?`${joined.length} teams registered`:`${state.teams.length} local test teams`;
+  ($('#connectedCount')||{}).textContent=remoteSession()?`${joined.length} teams registered`:`${state.teams.length} local test teams`;
   if(remoteSession()){$('#teamsSummary').textContent=`${joined.length} Team${joined.length===1?'':'s'} registered · One Captain per team · Captains play for their tables`;$('#addTeam').hidden=true;$('#teamsTable').innerHTML=`<div class="host-team-list">${joined.map(t=>`<div class="host-team"><span>${mascotEmoji(t.mascot_id)}</span><strong>${esc(t.name)}</strong><time>Joined ${new Date(t.joined_at).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</time></div>`).join('')||'<div class="empty-state">Waiting for Teams to join…</div>'}</div>`;return}
   const authoritative=remoteSession()?`<div class="remote-teams"><h3>Supabase-joined Teams</h3><p>Authoritative room membership and mascot identity.</p><table><thead><tr><th>Team</th><th>Status</th><th>Joined</th></tr></thead><tbody>${joined.map(t=>`<tr><td><strong><span class="mascot-inline">${mascotEmoji(t.mascot_id)}</span> ${esc(t.name)}</strong></td><td><span class="remote-team-state">${esc(t.status)}</span></td><td>${new Date(t.joined_at).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</td></tr>`).join('')||'<tr><td colspan="3">Waiting for Teams to join…</td></tr>'}</tbody></table></div>`:'';
   $('#teamsTable').innerHTML=`${authoritative}<div class="prototype-teams"><h3>Local gameplay test Teams</h3><p>Browser-only prototype data. Kept separate until Guess the Age moves to Supabase.</p><table><thead><tr><th>Team</th><th>Local points</th><th></th></tr></thead><tbody>${state.teams.map(t=>`<tr><td><input class="score-input team-name" style="width:220px" data-id="${t.id}" value="${esc(t.name)}"></td><td><input class="score-input team-score" data-id="${t.id}" type="number" value="${t.total||0}"></td><td><button class="mini-btn remove-team" data-id="${t.id}">Remove</button></td></tr>`).join('')}</tbody></table></div>`;
@@ -427,7 +444,7 @@ function renderRemotePerfectLieControl(){
   if($('#plNextReveal'))$('#plNextReveal').onclick=()=>runPerfectLieHostAction(()=>window.gameNightSupabaseActions.advancePerfectLieReveal(),'Could not reveal the next answer.')
   if($('#plNextQuestion'))$('#plNextQuestion').onclick=()=>runPerfectLieHostAction(()=>window.gameNightSupabaseActions.advancePerfectLieQuestion(null),'Could not advance to the next question.')
 }
-function polishRemoteGuessControl(event,status,q,answered){const toolbar=$('#liveControl .live-toolbar');if(toolbar)toolbar.outerHTML=`${roundNavigator()}`;bindRoundNavigator();bindAudienceSelector();if($('#openAudiencePolished'))$('#openAudiencePolished').onclick=()=>window.open(`audience.html?room=${encodeURIComponent(event.room_code)}`,'gameNightAudience');const main=$('#liveControl .live-main');main?.querySelector('.panel-heading .label')?.remove();const title=main?.querySelector('.panel-heading h2');if(title)title.textContent='Guess the Age';main?.querySelector('.live-meta')?.remove();const answerText=main?.querySelector('.question-preview p:last-child');if(answerText)answerText.innerHTML=`Answer: <strong>${q?ageOn(q.date_of_birth,event.event_date):'—'}</strong> · ${answered}/${remoteTeams().length} locked`;const action=guessPrimaryAction(status),start=$('#startQuestion'),next=$('#nextQuestion');if(start){start.hidden=action.id!=='startQuestion';start.textContent='Start question'}if(next){next.hidden=action.id!=='nextQuestion';next.className='btn primary';next.textContent='Next question'}const side=$('#liveControl .live-side');side?.querySelector('.panel-heading .label')?.remove();side?.querySelector('.panel-heading .pill')?.remove();const sideTitle=side?.querySelector('.panel-heading h2');if(sideTitle)sideTitle.textContent='Answers';side?.querySelector('#showLeaderboard')?.remove();const recovery=side?.querySelector('.recovery-actions');if(recovery)recovery.innerHTML=`<details class="more-menu"><summary>More</summary><button class="danger-link" id="restartRoundPolished">Restart this game</button><button id="newSessionPolished">Start new session</button></details>`;if($('#restartRoundPolished'))$('#restartRoundPolished').onclick=()=>runConfirmed(confirm,'Restart Guess the Age? Team membership and manual corrections stay, but all Guess the Age answers and game awards will be removed.',()=>(async()=>{await window.gameNightSupabaseActions.restartRound();nightPlan.progress.guessAge='live';persistNight();renderNight() }));if($('#newSessionPolished'))$('#newSessionPolished').onclick=()=>runConfirmed(confirm,'Start a fresh session with a new room code? The current event will be kept as history.',()=>window.gameNightSupabaseActions.startNewSession())}
+function polishRemoteGuessControl(event,status,q,answered){const toolbar=$('#liveControl .live-toolbar');if(toolbar)toolbar.outerHTML=`${roundNavigator()}`;bindRoundNavigator();bindAudienceSelector();if($('#openAudiencePolished'))$('#openAudiencePolished').onclick=()=>window.open(`audience.html?room=${encodeURIComponent(event.room_code)}`,'gameNightAudience');const main=$('#liveControl .live-main');main?.querySelector('.panel-heading .label')?.remove();const title=main?.querySelector('.panel-heading h2');if(title)title.textContent='Guess the Age';main?.querySelector('.live-meta')?.remove();const answerText=main?.querySelector('.question-preview p:last-child');if(answerText)answerText.innerHTML=`Answer: <strong>${q?ageOn(q.date_of_birth,event.event_date):'—'}</strong> · ${answered}/${remoteTeams().length} locked`;const action=guessPrimaryAction(status),start=$('#startQuestion'),next=$('#nextQuestion');if(start){start.hidden=action.id!=='startQuestion';start.textContent='Start question'}if(next){next.hidden=action.id!=='nextQuestion';next.className='btn primary';next.textContent='Next question'}const side=$('#liveControl .live-side');side?.querySelector('.panel-heading .label')?.remove();side?.querySelector('.panel-heading .pill')?.remove();const sideTitle=side?.querySelector('.panel-heading h2');if(sideTitle)sideTitle.textContent='Answers';side?.querySelector('#showLeaderboard')?.remove();const recovery=side?.querySelector('.recovery-actions');if(recovery)recovery.innerHTML=`<details class="more-menu"><summary>More</summary><button class="danger-link" id="restartRoundPolished">Restart this game</button><button id="newSessionPolished">Start new session</button></details>`;if($('#restartRoundPolished'))$('#restartRoundPolished').onclick=()=>runConfirmed(confirm,'Restart Guess the Age? Team membership and manual corrections stay, but all Guess the Age answers and game awards will be removed.',()=>(async()=>{await window.gameNightSupabaseActions.restartRound();renderNight() }));if($('#newSessionPolished'))$('#newSessionPolished').onclick=()=>runConfirmed(confirm,'Start a fresh session with a new room code? The current event will be kept as history.',()=>window.gameNightSupabaseActions.startNewSession())}
 function renderRemoteIBetControl(){
   const s=remoteSession(),game=s.i_bet_you,event=s.event,group=activeIBetYouGroup(s),groups=iBetYouGroups(s),allMembers=groups.flatMap(g=>g.members.map(m=>({...m,groupId:g.id,groupPosition:g.position}))),left=iBetYouSecondsRemaining(s);
   const groupCards=groups.map(g=>`<div class="ibet-group-card ${g.id===group?.id?'active':''}"><div><p class="eyebrow">GROUP ${g.position}</p><h3>${esc(g.category.title)}</h3><p>${g.members.map(m=>`${mascotEmoji(m.mascot_id)} ${esc(m.name)}`).join(' · ')}</p></div>${g.state==='waiting'?`<button class="mini-btn change-ibet-category" data-id="${g.id}">Change Category</button>`:`<span class="pill ready">${esc(g.state)}</span>`}</div>`).join('');
@@ -458,30 +475,37 @@ function simulateAnswers(){const c=currentCelebrity();if(!c)return;const correct
 function revealAnswer(){const c=currentCelebrity();if(!c)return;if(state.live.status==='question')lockQuestion();const key=questionKey(), correct=ageOn(c.dob,state.event.date);const already=state.live.scoredKeys.includes(key);const awards=[];state.teams.forEach(t=>{const guess=state.live.submissions[t.id];if(guess==null)return;const diff=Math.abs(Number(guess)-correct),points=pointsForDifference(diff);awards.push({id:t.id,name:t.name,guess:Number(guess),diff,points});if(!already){t.scores[key]=points;t.total=(t.total||0)+points;}});if(!already)state.live.scoredKeys.push(key);state.live.lastAwarded=awards.sort((a,b)=>b.points-a.points||a.diff-b.diff);state.live.status='reveal';state.live.deadline=null;save(false);renderLeaderboard();renderLiveControl()}
 function nextQuestion(){const r=currentRound();if(!r)return;if(state.live.questionIndex<r.settings.celebrities.length-1){state.live.questionIndex++;resetQuestion('ready')}else{state.live.status='roundComplete';state.live.deadline=null;state.live.submissions={};state.live.lastAwarded=[]}save(false);renderLiveControl()}
 
-function openModal(){renderGamePicker();$('#roundModal').classList.add('open');$('#modalBackdrop').classList.add('open')}
-function closeModal(){$('#roundModal').classList.remove('open');$('#modalBackdrop').classList.remove('open')}
-function renderGamePicker(){$('#gamePicker').innerHTML=Object.entries(games).filter(([,g])=>g.ready).map(([key,g])=>`<button class="game-option" data-game="${key}" ${nightPlan.games.some(r=>r.type===key)?'disabled':''}><span class="picker-icon">${g.icon}</span><strong>${g.name}</strong><span>${g.desc}</span><b>${nightPlan.games.some(r=>r.type===key)?'In your line-up':'Add to tonight →'}</b></button>`).join('');document.querySelectorAll('.game-option').forEach(b=>b.onclick=()=>addRound(b.dataset.game))}
-function newGame(type){const base={id:'r'+crypto.randomUUID(),type,title:games[type].name,settings:{}};if(type==='guessAge')base.settings={timer:15,points:'bands',celebrities:guessAgeDefaults(remoteSession()||{},seedCelebs)};if(type==='iBetYou')base.settings={seconds:60,winPoints:5,categories:iBetCategoryDefaults(remoteSession()||{})};if(type==='perfectLie'){const draft=createPerfectLieDraft();base.title=draft.title;base.settings={categories:draft.categories}}return base}
-function addRound(type){if(nightPlan.games.some(g=>g.type===type))return;const base=newGame(type);nightPlan.games.push(base);nightPlan.excluded=nightPlan.excluded.filter(t=>t!==type);nightPlan.finished=false;loadNight();persistNight();closeModal();renderNight();openDrawer(nightPlan.games.find(g=>g.type===type).id)}
-function deleteRound(){if(!editingRoundId||editorSaving||!gameForId(editingRoundId)?.editable)return;if(!confirm('Remove this game from tonight’s line-up? Saved game content will be kept.'))return;const r=nightPlan.games.find(g=>g.id===editingRoundId);nightPlan.excluded.push(r.type);nightPlan.games=nightPlan.games.filter(g=>g.id!==editingRoundId);state.rounds=nightPlan.games;persistNight();closeDrawer()}
+function openLibrary(mode='add',target=null){
+  libraryMode={mode,target};
+  $('#libraryEyebrow').textContent=mode==='replace'?'REPLACE GAME':'GAME LIBRARY';$('#libraryTitle').textContent=mode==='replace'?`Replace ${games[target].name}`:'Choose a game';
+  $('#gamePicker').innerHTML=libraryMarkup({mode,target,lineup:serverLineupTypes(remoteSession())});
+  document.querySelectorAll('[data-library-pick]').forEach(b=>b.onclick=()=>pickGame(b.dataset.libraryPick));
+  $('#roundModal').classList.add('open');$('#modalBackdrop').classList.add('open');$('#closeModal').focus();
+}
+function closeModal(){const wasOpen=$('#roundModal')?.classList.contains('open');$('#roundModal')?.classList.remove('open');$('#modalBackdrop')?.classList.remove('open');if(wasOpen)document.querySelector('#nightOverview [data-action="add"],#nightOverview .gn-card-primary')?.focus()}
+async function pickGame(type){
+  const {mode,target}=libraryMode||{};closeModal();
+  if(mode==='replace')await changeLineup(types=>replaceGame(types,target,type),`${games[target].name} replaced with ${games[type].name}.`);
+  else await changeLineup(types=>addGame(types,type),`${games[type].name} added to tonight’s line-up.`);
+}
 function initNav(){document.querySelectorAll('.nav-item').forEach(b=>b.onclick=()=>{document.querySelectorAll('.nav-item').forEach(x=>x.classList.toggle('active',x===b));document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));$('#view-'+b.dataset.view).classList.add('active');if(b.dataset.view==='night')renderNight()})}
 function init(){
-  loadNight();bindEventFields();renderRounds();renderTeams();renderRemoteLeaderboard();initNav();renderNight();
+  loadNight();bindEventFields();renderTeams();renderRemoteLeaderboard();initNav();renderNight();lastStatuses=new Map(plannedGames().map(g=>[g.type,g.status]));
   document.body.classList.toggle('hosted-admin',Boolean(remoteSession()));
   $('#resetDemo').onclick=()=>{if(confirm('Reset the prototype back to the demo event?')){localStorage.removeItem(STORE_KEY);localStorage.removeItem(LEGACY_KEY);location.reload()}};
-  $('#addRound').onclick=openModal;$('#closeModal').onclick=closeModal;$('#modalBackdrop').onclick=closeModal;$('#closeDrawer').onclick=closeDrawer;$('#drawerBackdrop').onclick=closeDrawer;$('#doneRound').onclick=saveGameSettings;$('#deleteRound').onclick=deleteRound;$('#addTeam').onclick=addTeam;
+  $('#closeModal').onclick=closeModal;$('#modalBackdrop').onclick=closeModal;$('#configBack').onclick=()=>closeEditor();$('#cancelConfig').onclick=()=>closeEditor();$('#doneRound').onclick=saveGameSettings;$('#hostAlertDismiss').onclick=clearHostError;$('#addTeam').onclick=addTeam;
   $('#logoutHost').onclick=()=>window.dispatchEvent(new Event('game-night-host-logout'));
   $('#switchEvent').onclick=()=>window.dispatchEvent(new Event('game-night-switch-events'));
   $('#headerAudience').onclick=()=>{const event=remoteSession()?.event;window.open(event?`audience.html?room=${encodeURIComponent(event.room_code)}`:'audience.html','gameNightAudience')};
   $('#leaderboardAudience').onclick=()=>remoteSession()?window.gameNightSupabaseActions.setDisplay('leaderboard'):nightView();
-  $('#copyTeamLink').onclick=async()=>{const code=remoteSession()?.event?.room_code;if(!code)return;const url=new URL('team.html',location.href);url.searchParams.set('room',code);try{await navigator.clipboard.writeText(url.href);toast('Team join link copied')}catch{toast(`Room code: ${code}`)}};
   window.addEventListener('storage',e=>{if(!remoteSession()&&e.key===STORE_KEY&&e.newValue){state=migrate(JSON.parse(e.newValue));renderLeaderboard();renderLiveControl()}});
   window.addEventListener('game-night-remote-state',e=>{
-    const previous=nightEventId===e.detail.event.id?Object.keys(nightPlan.progress||{}).filter(type=>nightPlan.progress[type]==='live'):[];
+    const previous=nightEventId===e.detail.event.id?lastStatuses:new Map();
     e.detail._hydratedAt=Date.now();window.gameNightRemoteSession=e.detail;document.body.classList.add('hosted-admin');loadNight();bindEventFields();renderTeams();renderRemoteLeaderboard();renderNight();
-    if(!nightPlan.audienceManual&&previous.some(type=>plannedGames().find(g=>g.type===type)?.status==='complete'))window.gameNightSupabaseActions.setDisplay('leaderboard').catch(()=>toast('Use the Audience menu to show the standings.'));
+    const current=plannedGames();lastStatuses=new Map(current.map(g=>[g.type,g.status]));
+    if(!nightPrefs.audienceManual&&current.some(g=>previous.get(g.type)==='live'&&g.status==='complete'))window.gameNightSupabaseActions.setDisplay('leaderboard').catch(()=>showHostError('Use the Audience menu to show the standings.'));
   });
-  document.addEventListener('keydown',e=>{if(e.key==='Escape'){if($('#roundModal').classList.contains('open'))closeModal();else if(editorDraft)closeDrawer()}});
+  document.addEventListener('keydown',e=>{if(e.key==='Escape'){if($('#roundModal').classList.contains('open'))closeModal();else if(editorDraft)closeEditor()}});
 }
 init();
 
